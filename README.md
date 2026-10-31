@@ -1,6 +1,6 @@
 # Europe Work Guide
 
-Mobile-first Bengali app that helps Bangladeshi workers compare official work-immigration information, keep a CV-style profile, review verified country access and visa routes, and prepare a printable CV. The React app reads and writes the existing Supabase tables; this project does not create or alter database tables.
+Mobile-first Bengali web application that helps Bangladeshi workers compare official work-immigration information, keep a CV-style profile, review verified country access and visa routes, and prepare a printable CV. The React app reads and writes the existing Supabase tables; this project does not create or alter database tables. Live app: https://europe-work-guide.vercel.app
 
 ## Folder tree
 
@@ -37,22 +37,24 @@ Mobile-first Bengali app that helps Bangladeshi workers compare official work-im
 └── vercel.json
 ```
 
-## 1. Push the project to GitHub
+## 1. GitHub repository
 
-1. Create a new, empty repository on GitHub. Do not add a README or license there if you are pushing this folder as-is.
-2. Install Git for Windows if `git` is not recognized by PowerShell.
-3. Open PowerShell in this project folder.
-4. Run these commands, replacing the example URL with your repository URL:
+The project is already published as a public repository: [https://github.com/mdnhbn/europe-work-guide](https://github.com/mdnhbn/europe-work-guide). The `main` branch is connected to Vercel and deploys on push.
 
-   ```powershell
-   git init
-   git add .
-   git commit -m "Build Europe Work Guide"
-   git branch -M main
-   git remote add origin https://github.com/YOUR-USERNAME/YOUR-REPOSITORY.git
-   git push -u origin main
-   ```
+To get a fresh local copy:
 
+```powershell
+git clone https://github.com/mdnhbn/europe-work-guide.git
+cd europe-work-guide
+```
+
+To publish later changes from the project folder, run:
+
+```powershell
+git add .
+git commit -m "Describe your change"
+git push
+```
 ## 2. Run the app on your computer
 
 1. Install Node.js 20 or later.
@@ -78,7 +80,7 @@ Mobile-first Bengali app that helps Bangladeshi workers compare official work-im
    - `VITE_SUPABASE_URL` = `https://fpuxzekbqfipxusyxsao.supabase.co`
    - `VITE_SUPABASE_ANON_KEY` = `sb_publishable_xzZkGWjVdRXsk4k9i3OKJw_kNhCYpA1`
 
-5. Deploy. After adding or changing environment variables, redeploy so the build receives them.
+5. The production deployment is available at [https://europe-work-guide.vercel.app](https://europe-work-guide.vercel.app). After adding or changing environment variables, redeploy so the build receives them.
 
 ## 4. Configure the admin panel
 
@@ -94,14 +96,14 @@ In Vercel **Settings → Environment Variables**, add these server-only values f
 - `GITHUB_REPOSITORY` = `mdnhbn/europe-work-guide`
 - `GITHUB_BRANCH` = `main`
 
-These values must not use the `VITE_` prefix and must never be committed. `.env.server.example` lists their names with empty values. After adding them, redeploy Vercel. The local Vite server does not run the serverless API; use the deployed Vercel app (or `vercel dev`) for admin operations.
+These values must not use the `VITE_` prefix and must never be committed. `.env.server.example` lists them. In the deployed project, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GITHUB_REPOSITORY`, and `GITHUB_BRANCH` are already configured; add `SUPABASE_SERVICE_KEY`, `ADMIN_EMAILS`, and `GITHUB_TOKEN` to activate the admin panel. After adding them, redeploy Vercel. The local Vite server does not run the serverless API; use the deployed Vercel app (or `vercel dev`) for admin operations.
 
 ## 5. Configure Supabase Auth
 
 1. Open the Supabase dashboard for this project.
 2. Go to **Authentication → URL Configuration**.
-3. Set **Site URL** to your deployed Vercel URL, for example `https://YOUR-PROJECT.vercel.app`.
-4. Add that deployed URL to **Redirect URLs**. While developing, also add `http://localhost:5173/**`.
+3. Set **Site URL** to your deployed Vercel URL, for example `https://europe-work-guide.vercel.app`.
+4. Add `https://europe-work-guide.vercel.app/**` to **Redirect URLs**. While developing, also add `http://localhost:5173/**`.
 5. Save. Sign-up may require opening the email confirmation link before the first login.
 6. Check that the existing RLS policies allow users to select/upsert only their own `profiles` row and that public reads expose only verified rows. This app intentionally does not change tables or policies.
 
