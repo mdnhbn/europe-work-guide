@@ -1,0 +1,22 @@
+{
+  "code": "IT",
+  "name": "ইতালি",
+  "language": "it",
+  "sources": [
+    {
+      "url": "https://www.integrazionemigranti.gov.it/it-it/Altre-info/e/4/o/6/id/7",
+      "type": "work_immigration",
+      "check_every_days": 7
+    },
+    {
+      "url": "https://www.interno.gov.it/it/temi/immigrazione-e-asilo/modalita-dingresso",
+      "type": "entry_and_work",
+      "check_every_days": 7
+    },
+    {
+      "url": "https://www.lavoro.gov.it/temi-e-priorita/immigrazione/focus-on/ingresso-e-soggiorno-per-lavoro-in-italia/pagine/ingresso-e-soggiorno-per-lavoro-in-italia",
+      "type": "work_rules",
+      "check_every_days": 7
+    }
+  ]
+}
