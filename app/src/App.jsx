@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input';
+import phoneLabels from 'react-phone-number-input/locale/en';
+import 'react-phone-number-input/style.css';
 import { isSupabaseConfigured, supabase } from './lib/supabase.js';
 import { matchRoute } from './lib/matching.js';
 import { adminRequest } from './lib/adminApi.js';
@@ -43,26 +46,116 @@ function Header({ user, onSignOut }) {
 }
 function AuthPanel() {
   const [mode, setMode] = useState('signup');
+  const [authMethod, setAuthMethod] = useState('email');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [phone, setPhone] = useState('');
+  const [otp, setOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [resendCountdown, setResendCountdown] = useState(0);
+  const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const submit = async (event) => {
-    event.preventDefault(); setError(''); setMessage(''); setBusy(true);
+
+  useEffect(() => {
+    if (resendCountdown <= 0) return undefined;
+    const timer = window.setTimeout(() => setResendCountdown((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [resendCountdown]);
+
+  const clearNotices = () => { setError(''); setMessage(''); };
+  const authErrorMessage = (err, method) => {
+    const raw = `${err?.code || ''} ${err?.message || ''}`.toLowerCase();
+    if (raw.includes('provider') && (raw.includes('disabled') || raw.includes('unsupported'))) {
+      return 'এই provider এখনো Supabase Auth-এ চালু করা হয়নি। README-র provider setup অনুসরণ করুন।';
+    }
+    if (method === 'phone' && raw.includes('over_sms_send_rate_limit')) {
+      return 'এই নম্বরে অনেকবার কোড চাওয়া হয়েছে। কিছুক্ষণ অপেক্ষা করে আবার চেষ্টা করুন।';
+    }
+    if (method === 'phone' && raw.includes('otp_expired')) {
+      return 'কোডটির মেয়াদ শেষ হয়েছে। নতুন কোড নিয়ে আবার চেষ্টা করুন।';
+    }
+    if (method === 'phone' && (raw.includes('phone_provider_disabled') || raw.includes('sms') || raw.includes('phone'))) {
+      return 'ফোনে কোড পাঠানো যায়নি। Supabase-এ Phone provider ও SMS provider চালু আছে কি না যাচাই করুন।';
+    }
+    if (method === 'email' && raw.includes('invalid login credentials')) {
+      return 'ইমেইল বা পাসওয়ার্ড সঠিক নয়। আবার যাচাই করুন।';
+    }
+    return 'অনুরোধ সম্পন্ন হয়নি। সংযোগ ও Supabase Auth সেটিং যাচাই করে আবার চেষ্টা করুন।';
+  };
+  useEffect(() => {
+    const callbackParams = new URLSearchParams(window.location.hash.slice(1));
+    const callbackError = callbackParams.get('error_description') || callbackParams.get('error');
+    if (!callbackError) return;
+    setError(authErrorMessage({ message: callbackError }, 'oauth'));
+    window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}`);
+  }, []);
+
+  const submitEmail = async (event) => {
+    event.preventDefault(); clearNotices(); setBusy('email');
     try {
       const result = mode === 'signup'
         ? await supabase.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo: window.location.origin } })
         : await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (result.error) throw result.error;
       if (mode === 'signup' && !result.data.session) setMessage('ইমেইলে পাঠানো লিংক খুলে নিবন্ধন নিশ্চিত করুন। তারপর লগ ইন করুন।');
-    } catch {
-      setError('অ্যাকাউন্ট খোলা বা লগ ইন করা যায়নি। ইমেইল ও পাসওয়ার্ড যাচাই করে আবার চেষ্টা করুন।');
-    } finally { setBusy(false); }
+    } catch (err) { setError(authErrorMessage(err, 'email')); }
+    finally { setBusy(''); }
   };
+
+  const requestPhoneOtp = async (event) => {
+    event.preventDefault(); clearNotices();
+    if (!phone || !isValidPhoneNumber(phone)) { setError('দেশের কোডসহ সঠিক ফোন নম্বর দিন।'); return; }
+    setBusy('phone');
+    try {
+      const { error: requestError } = await supabase.auth.signInWithOtp({ phone, options: { shouldCreateUser: true } });
+      if (requestError) throw requestError;
+      setOtpSent(true); setOtp(''); setResendCountdown(60);
+      setMessage('SMS-এ ৬ সংখ্যার কোড পাঠানো হয়েছে। নতুন নম্বর হলে কোড যাচাইয়ের পর অ্যাকাউন্ট তৈরি হবে।');
+    } catch (err) { setError(authErrorMessage(err, 'phone')); }
+    finally { setBusy(''); }
+  };
+
+  const verifyPhoneOtp = async (event) => {
+    event.preventDefault(); clearNotices();
+    if (!phone || !isValidPhoneNumber(phone)) { setError('ফোন নম্বরটি আবার যাচাই করুন।'); return; }
+    if (!/^\d{6}$/.test(otp.trim())) { setError('SMS-এ পাওয়া ৬ সংখ্যার কোডটি লিখুন।'); return; }
+    setBusy('phone');
+    try {
+      const { error: verifyError } = await supabase.auth.verifyOtp({ phone, token: otp.trim(), type: 'sms' });
+      if (verifyError) throw verifyError;
+    } catch (err) { setError(authErrorMessage(err, 'phone')); }
+    finally { setBusy(''); }
+  };
+
+  const resendPhoneOtp = async () => {
+    clearNotices(); setBusy('phone');
+    try {
+      const { error: requestError } = await supabase.auth.signInWithOtp({ phone, options: { shouldCreateUser: true } });
+      if (requestError) throw requestError;
+      setOtp(''); setResendCountdown(60); setMessage('নতুন কোড পাঠানো হয়েছে।');
+    } catch (err) { setError(authErrorMessage(err, 'phone')); }
+    finally { setBusy(''); }
+  };
+
+  const signInWithProvider = async (provider) => {
+    clearNotices(); setBusy(provider);
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: window.location.origin },
+      });
+      if (oauthError) throw oauthError;
+    } catch (err) { setError(authErrorMessage(err, provider)); setBusy(''); }
+  };
+
   return <main className="auth-layout"><section className="hero-copy"><p className="eyebrow">আপনার পথ, আপনার নিয়ন্ত্রণে</p><h1>ইউরোপে কাজের<br className="desktop-break" /> তথ্য বুঝুন সহজে</h1><p className="hero-description">সরকারি উৎসের তথ্য দেখুন, নিজের যোগ্যতার সঙ্গে পথ মিলিয়ে নিন, আর নিজের সিভি তৈরি করুন।</p><div className="hero-points"><span>✓ যাচাইকৃত তথ্যের অবস্থা স্পষ্ট</span><span>✓ দালাল ছাড়া নিজে খোঁজার সহায়তা</span><span>✓ আপনার প্রোফাইল শুধু আপনার</span></div></section>
-    <section className="auth-card"><div className="tabs auth-tabs"><button className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); setError(''); }}>নতুন অ্যাকাউন্ট</button><button className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); setError(''); }}>লগ ইন</button></div><h2>{mode === 'signup' ? 'শুরু করুন' : 'আবার স্বাগতম'}</h2><p className="muted">{mode === 'signup' ? 'ইমেইল ও পাসওয়ার্ড দিয়ে অ্যাকাউন্ট খুলুন।' : 'আপনার অ্যাকাউন্টে প্রবেশ করুন।'}</p><form onSubmit={submit} className="stack"><label>ইমেইল<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label><label>পাসওয়ার্ড<input type="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} minLength="6" value={password} onChange={(e) => setPassword(e.target.value)} required /></label><ErrorMessage>{error}</ErrorMessage>{message && <p className="message success">{message}</p>}<button className="button button-primary full" disabled={busy}>{busy ? 'অপেক্ষা করুন…' : mode === 'signup' ? 'অ্যাকাউন্ট খুলুন' : 'লগ ইন করুন'}</button></form></section>
-  </main>;
+    <section className="auth-card"><div className="tabs auth-tabs"><button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); clearNotices(); }}>নতুন অ্যাকাউন্ট</button><button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); clearNotices(); }}>লগ ইন</button></div><h2>{mode === 'signup' ? 'শুরু করুন' : 'আবার স্বাগতম'}</h2><p className="muted">ইমেইল, Google, Facebook অথবা ফোন নম্বর দিয়ে {mode === 'signup' ? 'অ্যাকাউন্ট খুলুন' : 'প্রবেশ করুন'}।</p>
+      <div className="tabs auth-method-tabs" role="tablist" aria-label="সাইন-ইন পদ্ধতি"><button type="button" role="tab" aria-selected={authMethod === 'email'} className={authMethod === 'email' ? 'active' : ''} onClick={() => { setAuthMethod('email'); clearNotices(); }}>ইমেইল</button><button type="button" role="tab" aria-selected={authMethod === 'phone'} className={authMethod === 'phone' ? 'active' : ''} onClick={() => { setAuthMethod('phone'); clearNotices(); }}>ফোন OTP</button></div>
+      {authMethod === 'email' ? <form onSubmit={submitEmail} className="stack auth-form"><label>ইমেইল<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label><label>পাসওয়ার্ড<input type="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} minLength="6" value={password} onChange={(e) => setPassword(e.target.value)} required /></label><ErrorMessage>{error}</ErrorMessage>{message && <p className="message success">{message}</p>}<button className="button button-primary full" disabled={Boolean(busy)}>{busy === 'email' ? 'অপেক্ষা করুন…' : mode === 'signup' ? 'ইমেইলে অ্যাকাউন্ট খুলুন' : 'ইমেইল দিয়ে লগ ইন করুন'}</button></form> : <form onSubmit={otpSent ? verifyPhoneOtp : requestPhoneOtp} className="stack auth-form"><Field label="ফোন নম্বর" hint="দেশের কোড বেছে নম্বর দিন; যেকোনো দেশের নম্বর ব্যবহার করা যাবে।"><PhoneInput defaultCountry="BD" labels={{ ...phoneLabels, country: 'দেশ নির্বাচন করুন', phone: 'ফোন নম্বর' }} countrySelectProps={{ 'aria-label': 'দেশ নির্বাচন করুন' }} value={phone} onChange={(value) => setPhone(value || '')} disabled={Boolean(busy) || otpSent} placeholder="ফোন নম্বর" /></Field>{otpSent && <><Field label="SMS যাচাইকরণ কোড"><input type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength="6" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} required /></Field><div className="phone-code-actions"><button type="button" className="text-button" onClick={() => { setOtpSent(false); setOtp(''); setResendCountdown(0); clearNotices(); }} disabled={Boolean(busy)}>নম্বর পরিবর্তন</button><button type="button" className="text-button" onClick={resendPhoneOtp} disabled={Boolean(busy) || resendCountdown > 0}>{resendCountdown > 0 ? `${resendCountdown} সেকেন্ড পরে আবার কোড` : 'আবার কোড পাঠান'}</button></div></>}<ErrorMessage>{error}</ErrorMessage>{message && <p className="message success">{message}</p>}<button className="button button-primary full" disabled={Boolean(busy) || !phone || (otpSent && otp.length !== 6)}>{busy === 'phone' ? 'অপেক্ষা করুন…' : otpSent ? 'কোড যাচাই করে প্রবেশ করুন' : 'SMS কোড পাঠান'}</button></form>}
+      <div className="auth-divider"><span>অথবা Google / Facebook দিয়ে চালিয়ে যান</span></div><div className="social-auth"><button type="button" className="social-button" onClick={() => signInWithProvider('google')} disabled={Boolean(busy)}><span className="provider-icon google-icon" aria-hidden="true">G</span><span>{busy === 'google' ? 'Google-এ যাচাই হচ্ছে…' : 'Google দিয়ে চালিয়ে যান'}</span></button><button type="button" className="social-button" onClick={() => signInWithProvider('facebook')} disabled={Boolean(busy)}><span className="provider-icon facebook-icon" aria-hidden="true">f</span><span>{busy === 'facebook' ? 'Facebook-এ যাচাই হচ্ছে…' : 'Facebook দিয়ে চালিয়ে যান'}</span></button></div>
+
+    </section></main>;
 }
 function TabNav({ selected, onSelect, isAdmin }) {
   const tabs = [['profile', 'আমার প্রোফাইল'], ['countries', 'দেশ ও চাকরি'], ['cv', 'সিভি তৈরি'], ...(isAdmin ? [['admin', 'অ্যাডমিন']] : [])];

@@ -107,6 +107,17 @@ These values must not use the `VITE_` prefix and must never be committed. `.env.
 5. Save. Sign-up may require opening the email confirmation link before the first login.
 6. Check that the existing RLS policies allow users to select/upsert only their own `profiles` row and that public reads expose only verified rows. This app intentionally does not change tables or policies.
 
+### Enable Google, Facebook, and phone sign-in
+
+The app now shows Google and Facebook buttons on both the sign-up and login screens. Phone OTP works as a combined flow: a new number creates an account after OTP verification; an existing number signs in. The phone picker supports international country codes and sends the number to Supabase in E.164 format.
+
+Provider credentials are managed in Supabase, not in this repository or Vercel:
+
+- **Google:** Create a Web OAuth client in Google Cloud. Add `https://europe-work-guide.vercel.app` (and `http://localhost:5173` for local development) as authorized JavaScript origins. Add the Supabase callback URL `https://fpuxzekbqfipxusyxsao.supabase.co/auth/v1/callback` as an authorized redirect URI. In Supabase **Authentication → Sign In / Providers → Google**, enable Google and enter the client ID and secret. Follow the [Supabase Google setup guide](https://supabase.com/docs/guides/auth/social-sign-in/auth-google).
+- **Facebook:** Create a Facebook Login app, set the same Supabase callback URL as a valid OAuth redirect URI, and add the app ID and secret under Supabase **Authentication → Sign In / Providers → Facebook**. Grant the email permission and switch the Facebook app to Live mode when ready for general users. See the [Supabase Facebook setup guide](https://supabase.com/docs/guides/auth/social-sign-in/auth-facebook).
+- **Phone:** Enable the Phone provider in Supabase and configure an SMS provider such as Twilio, Vonage, or MessageBird. The picker accepts numbers from any country; SMS delivery still depends on your provider's country coverage, account settings, and local regulations. SMS messages can incur charges, so set rate limits and CAPTCHA before public use. See the [Supabase phone sign-in guide](https://supabase.com/docs/guides/auth/phone-login).
+
+Keep Google/Facebook client secrets and SMS-provider credentials only in the Supabase dashboard. Add the deployed app URL and your local development URL in Supabase **Authentication → URL Configuration → Redirect URLs** so Supabase can return users to the app after sign-in. See [Supabase redirect URL setup](https://supabase.com/docs/guides/auth/redirect-urls).
 ## 6. Add GitHub Actions secrets for the scraper
 
 1. In the Supabase dashboard, copy the project URL and the **service_role/secret** key from **Project Settings → API**. The scraper needs that privileged key to write `source_pages` and pending `visa_routes` rows.

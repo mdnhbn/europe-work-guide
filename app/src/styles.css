@@ -52,6 +52,27 @@ a { color: #176a51; font-weight: 600; text-decoration-thickness: 1px; text-under
 .tabs button { border: 0; border-radius: 9px; background: transparent; padding: 10px 15px; color: #667771; font-weight: 600; }
 .tabs button.active { background: #fff; color: var(--green-dark); box-shadow: 0 2px 5px #152c2310; }
 .auth-tabs button { flex: 1; }
+.auth-method-tabs { margin: 0 0 17px; }
+.auth-method-tabs button { flex: 1; }
+.auth-form { margin-bottom: 19px; }
+.auth-divider { display: flex; align-items: center; gap: 11px; margin: 19px 0 14px; color: #8a9992; font-size: 11px; text-align: center; }
+.auth-divider::before, .auth-divider::after { content: ""; height: 1px; flex: 1; background: #e5ece8; }
+.social-auth { display: grid; gap: 10px; }
+.social-button { width: 100%; min-height: 47px; display: flex; align-items: center; justify-content: center; gap: 11px; padding: 10px 14px; border: 1px solid #dce6e0; border-radius: 10px; background: #fff; color: #344c43; font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; transition: border-color .15s, background .15s, transform .15s; }
+.social-button:hover:not(:disabled) { border-color: #9cb7aa; background: #f9fbfa; transform: translateY(-1px); }
+.social-button:disabled { opacity: .58; cursor: wait; }
+.provider-icon { width: 23px; height: 23px; display: inline-grid; place-items: center; flex: 0 0 23px; font-family: Arial, sans-serif; font-size: 18px; font-weight: 800; }
+.google-icon { background: conic-gradient(from -45deg, #4285f4 0 25%, #34a853 25% 49%, #fbbc05 49% 73%, #ea4335 73% 88%, #4285f4 88%); color: transparent; background-clip: text; -webkit-background-clip: text; }
+.facebook-icon { border-radius: 50%; background: #1877f2; color: #fff; font-size: 20px; line-height: 1; }
+.PhoneInput { min-height: 44px; padding: 0 10px; border: 1px solid #d5e0da; border-radius: 9px; background: #fff; color: var(--ink); }
+.PhoneInput--focus { border-color: #4c9b7d; box-shadow: 0 0 0 3px #25845b18; }
+.PhoneInputInput { min-height: 42px; padding: 9px 8px; border: 0; border-radius: 0; outline: 0; box-shadow: none; background: transparent; font: inherit; font-size: 14px; }
+.PhoneInputInput:focus { border: 0; outline: 0; box-shadow: none; }
+.PhoneInputCountry { padding-right: 6px; }
+.PhoneInputCountrySelectArrow { margin-left: 7px; }
+.phone-code-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.text-button { border: 0; padding: 2px 0; background: transparent; color: #176a51; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; }
+.text-button:disabled { color: #98a69f; cursor: default; }
 .stack { display: grid; gap: 16px; }
 label { display: grid; gap: 7px; color: #304b43; font-size: 13px; font-weight: 600; }
 input, select { width: 100%; min-height: 43px; padding: 10px 12px; border: 1px solid #d5e0da; border-radius: 9px; background: #fff; color: var(--ink); outline: none; }
