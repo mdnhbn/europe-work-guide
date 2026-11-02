@@ -15,6 +15,22 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+      - name: Validate required scraper secrets
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          missing=()
+          [[ -n "${SUPABASE_URL:-}" ]] || missing+=(SUPABASE_URL)
+          [[ -n "${SUPABASE_SERVICE_KEY:-}" ]] || missing+=(SUPABASE_SERVICE_KEY)
+          [[ -n "${ANTHROPIC_API_KEY:-}" ]] || missing+=(ANTHROPIC_API_KEY)
+          if ((${#missing[@]})); then
+            echo "::error::Missing required GitHub Actions secret(s): ${missing[*]}"
+            echo "Add the missing names under repository Settings > Secrets and variables > Actions. Secret values are never printed."
+            exit 1
+          fi
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
@@ -28,4 +44,3 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           AUTO_PUBLISH: ${{ vars.AUTO_PUBLISH || 'false' }}
         run: python scrapers/engine.py
-

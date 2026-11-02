@@ -2,6 +2,15 @@
 
 Mobile-first Bengali web application that helps Bangladeshi workers compare official work-immigration information, keep a CV-style profile, review verified country access and visa routes, and prepare a printable CV. The React app reads and writes the existing Supabase tables; this project does not create or alter database tables. Live app: https://europe-work-guide.vercel.app
 
+## Production activation checklist
+
+The app code and deployment do not provide third-party credentials. Before all live workflows can run, configure these in their respective dashboards:
+
+- **Supabase Auth:** enable Google, Facebook, and Phone after adding valid provider credentials. For phone OTP, configure the SMS provider credentials and delivery settings. OAuth callback: `https://fpuxzekbqfipxusyxsao.supabase.co/auth/v1/callback`; allow the production URL in Supabase Auth redirect URLs.
+- **GitHub Actions scraper:** add `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, and `ANTHROPIC_API_KEY` as repository Actions secrets. The workflow now reports all missing secret names without printing values.
+- **Vercel admin panel:** add `SUPABASE_SERVICE_KEY`, `ADMIN_EMAILS`, and a repository-scoped `GITHUB_TOKEN` with Contents read/write access. Admin review is required before scraped routes become visible; country access by nationality and job listings remain manually verified data.
+
+The scraper never auto-publishes by default. Do not mark immigration data verified until a reviewer has checked its current official source.
 ## Folder tree
 
 ```text

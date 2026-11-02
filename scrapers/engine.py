@@ -350,6 +350,11 @@ def sync_country(db: Client, country: dict[str, Any]) -> None:
     }, on_conflict="code").execute()
 
 def main() -> int:
+    required_names = ("SUPABASE_URL", "SUPABASE_SERVICE_KEY", "ANTHROPIC_API_KEY")
+    missing_names = [name for name in required_names if not os.getenv(name, "").strip()]
+    if missing_names:
+        LOGGER.error("Missing required environment variable(s): %s", ", ".join(missing_names))
+        return 2
     supabase_url = required_env("SUPABASE_URL")
     service_key = required_env("SUPABASE_SERVICE_KEY")
     anthropic_key = required_env("ANTHROPIC_API_KEY")
