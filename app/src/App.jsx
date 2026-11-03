@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input';
 import phoneLabels from 'react-phone-number-input/locale/en';
 import 'react-phone-number-input/style.css';
-import { isSupabaseConfigured, supabase } from './lib/supabase.js';
+import { getOAuthProviderEnabled, isSupabaseConfigured, supabase } from './lib/supabase.js';
 import { matchRoute } from './lib/matching.js';
 import { adminRequest } from './lib/adminApi.js';
 
@@ -66,6 +66,12 @@ function AuthPanel() {
   const clearNotices = () => { setError(''); setMessage(''); };
   const authErrorMessage = (err, method) => {
     const raw = `${err?.code || ''} ${err?.message || ''}`.toLowerCase();
+    if (raw.includes('provider settings')) {
+      return 'Supabase Auth-এর provider সেটিং যাচাই করা যায়নি। ইমেইল দিয়ে চালিয়ে যান বা পরে আবার চেষ্টা করুন।';
+    }
+    if (method === 'phone' && raw.includes('provider') && (raw.includes('disabled') || raw.includes('unsupported'))) {
+      return 'Supabase Auth-এ Phone provider চালু করা হয়নি; SMS কোড পাঠানো যাবে না।';
+    }
     if (raw.includes('provider') && (raw.includes('disabled') || raw.includes('unsupported'))) {
       return 'এই provider এখনো Supabase Auth-এ চালু করা হয়নি। README-র provider setup অনুসরণ করুন।';
     }
@@ -108,6 +114,9 @@ function AuthPanel() {
     if (!phone || !isValidPhoneNumber(phone)) { setError('দেশের কোডসহ সঠিক ফোন নম্বর দিন।'); return; }
     setBusy('phone');
     try {
+      const phoneEnabled = await getOAuthProviderEnabled('phone');
+      if (phoneEnabled === false) throw new Error('Phone provider is not enabled');
+      if (phoneEnabled !== true) throw new Error('Phone provider settings could not be checked');
       const { error: requestError } = await supabase.auth.signInWithOtp({ phone, options: { shouldCreateUser: true } });
       if (requestError) throw requestError;
       setOtpSent(true); setOtp(''); setResendCountdown(60);
@@ -131,6 +140,9 @@ function AuthPanel() {
   const resendPhoneOtp = async () => {
     clearNotices(); setBusy('phone');
     try {
+      const phoneEnabled = await getOAuthProviderEnabled('phone');
+      if (phoneEnabled === false) throw new Error('Phone provider is not enabled');
+      if (phoneEnabled !== true) throw new Error('Phone provider settings could not be checked');
       const { error: requestError } = await supabase.auth.signInWithOtp({ phone, options: { shouldCreateUser: true } });
       if (requestError) throw requestError;
       setOtp(''); setResendCountdown(60); setMessage('নতুন কোড পাঠানো হয়েছে।');
@@ -141,18 +153,23 @@ function AuthPanel() {
   const signInWithProvider = async (provider) => {
     clearNotices(); setBusy(provider);
     try {
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      const providerEnabled = await getOAuthProviderEnabled(provider);
+      if (providerEnabled === false) throw new Error('Unsupported provider: provider is not enabled');
+      if (providerEnabled !== true) throw new Error('OAuth provider settings could not be checked');
+      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
-        options: { redirectTo: window.location.origin },
+        options: { redirectTo: window.location.origin, skipBrowserRedirect: true },
       });
       if (oauthError) throw oauthError;
+      if (!data?.url) throw new Error('OAuth authorization URL was not returned');
+      window.location.assign(data.url);
     } catch (err) { setError(authErrorMessage(err, provider)); setBusy(''); }
   };
 
   return <main className="auth-layout"><section className="hero-copy"><p className="eyebrow">আপনার পথ, আপনার নিয়ন্ত্রণে</p><h1>ইউরোপে কাজের<br className="desktop-break" /> তথ্য বুঝুন সহজে</h1><p className="hero-description">সরকারি উৎসের তথ্য দেখুন, নিজের যোগ্যতার সঙ্গে পথ মিলিয়ে নিন, আর নিজের সিভি তৈরি করুন।</p><div className="hero-points"><span>✓ যাচাইকৃত তথ্যের অবস্থা স্পষ্ট</span><span>✓ দালাল ছাড়া নিজে খোঁজার সহায়তা</span><span>✓ আপনার প্রোফাইল শুধু আপনার</span></div></section>
     <section className="auth-card"><div className="tabs auth-tabs"><button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); clearNotices(); }}>নতুন অ্যাকাউন্ট</button><button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); clearNotices(); }}>লগ ইন</button></div><h2>{mode === 'signup' ? 'শুরু করুন' : 'আবার স্বাগতম'}</h2><p className="muted">ইমেইল, Google, Facebook অথবা ফোন নম্বর দিয়ে {mode === 'signup' ? 'অ্যাকাউন্ট খুলুন' : 'প্রবেশ করুন'}।</p>
       <div className="tabs auth-method-tabs" role="tablist" aria-label="সাইন-ইন পদ্ধতি"><button type="button" role="tab" aria-selected={authMethod === 'email'} className={authMethod === 'email' ? 'active' : ''} onClick={() => { setAuthMethod('email'); clearNotices(); }}>ইমেইল</button><button type="button" role="tab" aria-selected={authMethod === 'phone'} className={authMethod === 'phone' ? 'active' : ''} onClick={() => { setAuthMethod('phone'); clearNotices(); }}>ফোন OTP</button></div>
-      {authMethod === 'email' ? <form onSubmit={submitEmail} className="stack auth-form"><label>ইমেইল<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label><label>পাসওয়ার্ড<input type="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} minLength="6" value={password} onChange={(e) => setPassword(e.target.value)} required /></label><ErrorMessage>{error}</ErrorMessage>{message && <p className="message success">{message}</p>}<button className="button button-primary full" disabled={Boolean(busy)}>{busy === 'email' ? 'অপেক্ষা করুন…' : mode === 'signup' ? 'ইমেইলে অ্যাকাউন্ট খুলুন' : 'ইমেইল দিয়ে লগ ইন করুন'}</button></form> : <form onSubmit={otpSent ? verifyPhoneOtp : requestPhoneOtp} className="stack auth-form"><Field label="ফোন নম্বর" hint="দেশের কোড বেছে নম্বর দিন; যেকোনো দেশের নম্বর ব্যবহার করা যাবে।"><PhoneInput defaultCountry="BD" labels={{ ...phoneLabels, country: 'দেশ নির্বাচন করুন', phone: 'ফোন নম্বর' }} countrySelectProps={{ 'aria-label': 'দেশ নির্বাচন করুন' }} value={phone} onChange={(value) => setPhone(value || '')} disabled={Boolean(busy) || otpSent} placeholder="ফোন নম্বর" /></Field>{otpSent && <><Field label="SMS যাচাইকরণ কোড"><input type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength="6" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} required /></Field><div className="phone-code-actions"><button type="button" className="text-button" onClick={() => { setOtpSent(false); setOtp(''); setResendCountdown(0); clearNotices(); }} disabled={Boolean(busy)}>নম্বর পরিবর্তন</button><button type="button" className="text-button" onClick={resendPhoneOtp} disabled={Boolean(busy) || resendCountdown > 0}>{resendCountdown > 0 ? `${resendCountdown} সেকেন্ড পরে আবার কোড` : 'আবার কোড পাঠান'}</button></div></>}<ErrorMessage>{error}</ErrorMessage>{message && <p className="message success">{message}</p>}<button className="button button-primary full" disabled={Boolean(busy) || !phone || (otpSent && otp.length !== 6)}>{busy === 'phone' ? 'অপেক্ষা করুন…' : otpSent ? 'কোড যাচাই করে প্রবেশ করুন' : 'SMS কোড পাঠান'}</button></form>}
+      {authMethod === 'email' ? <form onSubmit={submitEmail} className="stack auth-form"><label>ইমেইল<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label><label>পাসওয়ার্ড<input type="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} minLength={mode === 'signup' ? 8 : undefined} value={password} onChange={(e) => setPassword(e.target.value)} required /></label><ErrorMessage>{error}</ErrorMessage>{message && <p className="message success">{message}</p>}<button className="button button-primary full" disabled={Boolean(busy)}>{busy === 'email' ? 'অপেক্ষা করুন…' : mode === 'signup' ? 'ইমেইলে অ্যাকাউন্ট খুলুন' : 'ইমেইল দিয়ে লগ ইন করুন'}</button></form> : <form onSubmit={otpSent ? verifyPhoneOtp : requestPhoneOtp} className="stack auth-form"><Field label="ফোন নম্বর" hint="দেশের কোড বেছে নম্বর দিন; যেকোনো দেশের নম্বর ব্যবহার করা যাবে।"><PhoneInput defaultCountry="BD" labels={{ ...phoneLabels, country: 'দেশ নির্বাচন করুন', phone: 'ফোন নম্বর' }} countrySelectProps={{ 'aria-label': 'দেশ নির্বাচন করুন' }} value={phone} onChange={(value) => setPhone(value || '')} disabled={Boolean(busy) || otpSent} placeholder="ফোন নম্বর" /></Field>{otpSent && <><Field label="SMS যাচাইকরণ কোড"><input type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength="6" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} required /></Field><div className="phone-code-actions"><button type="button" className="text-button" onClick={() => { setOtpSent(false); setOtp(''); setResendCountdown(0); clearNotices(); }} disabled={Boolean(busy)}>নম্বর পরিবর্তন</button><button type="button" className="text-button" onClick={resendPhoneOtp} disabled={Boolean(busy) || resendCountdown > 0}>{resendCountdown > 0 ? `${resendCountdown} সেকেন্ড পরে আবার কোড` : 'আবার কোড পাঠান'}</button></div></>}<ErrorMessage>{error}</ErrorMessage>{message && <p className="message success">{message}</p>}<button className="button button-primary full" disabled={Boolean(busy) || !phone || (otpSent && otp.length !== 6)}>{busy === 'phone' ? 'অপেক্ষা করুন…' : otpSent ? 'কোড যাচাই করে প্রবেশ করুন' : 'SMS কোড পাঠান'}</button></form>}
       <div className="auth-divider"><span>অথবা Google / Facebook দিয়ে চালিয়ে যান</span></div><div className="social-auth"><button type="button" className="social-button" onClick={() => signInWithProvider('google')} disabled={Boolean(busy)}><span className="provider-icon google-icon" aria-hidden="true">G</span><span>{busy === 'google' ? 'Google-এ যাচাই হচ্ছে…' : 'Google দিয়ে চালিয়ে যান'}</span></button><button type="button" className="social-button" onClick={() => signInWithProvider('facebook')} disabled={Boolean(busy)}><span className="provider-icon facebook-icon" aria-hidden="true">f</span><span>{busy === 'facebook' ? 'Facebook-এ যাচাই হচ্ছে…' : 'Facebook দিয়ে চালিয়ে যান'}</span></button></div>
 
     </section></main>;
@@ -225,7 +242,7 @@ function CountryCard({ country, access, profile, expanded, data, loading, error,
     {expanded && <div className="country-content">{loading ? <p className="loading-line">তথ্য লোড হচ্ছে…</p> : error ? <ErrorMessage>{error}</ErrorMessage> : <>
       <section className="access-summary"><h3>জাতীয়তা অনুযায়ী প্রবেশের তথ্য</h3>{access ? <><p>{displayValue(access.restrictions)}</p><p><strong>কোথায় আবেদন করবেন:</strong> {displayValue(access.apply_where)}</p><p><strong>নথির নোট:</strong> {displayValue(access.documents_note)}</p><p><strong>সর্বশেষ যাচাই:</strong> {dateLabel(access.last_verified)}</p>{access.official_url && <a href={access.official_url} target="_blank" rel="noreferrer">সরকারি পৃষ্ঠা ↗</a>}</> : <p className="muted">যাচাইকৃত জাতীয়তা-সংক্রান্ত তথ্য নেই। এখানে প্রবেশের অবস্থা অনুমান করা হয়নি।</p>}</section>
       <section className="country-subsection"><div className="section-heading"><h3>ভিসার পথ</h3><span className="count-pill">{data?.routes?.length || 0}</span></div>{data?.routes?.length ? data.routes.map((route) => <RouteCard key={route.id} route={route} profile={profile} />) : <p className="muted empty-inline">এখনো কোনো যাচাইকৃত ভিসা পথ নেই।</p>}</section>
-      <section className="country-subsection"><div className="section-heading"><h3>চাকরির বিজ্ঞপ্তি</h3><span className="count-pill">{data?.jobs?.length || 0}</span></div>{data?.jobs?.length ? data.jobs.map((job) => <article className="job-card" key={job.id}><h4>{displayValue(job.title)}</h4><p><strong>{displayValue(job.employer)}</strong> · {displayValue(job.location)}</p><p>{displayValue(job.description)}</p><p className="muted">{displayValue(job.occupation)} · প্রকাশিত {dateLabel(job.posted_at)}</p>{job.apply_url && <a href={job.apply_url} target="_blank" rel="noreferrer">আবেদনের পৃষ্ঠা ↗</a>}</article>) : <p className="muted empty-inline">এখনো কোনো যাচাইকৃত সক্রিয় চাকরি নেই।</p>}</section>
+      <section className="country-subsection"><div className="section-heading"><h3>চাকরির বিজ্ঞপ্তি</h3><span className="count-pill">{data?.jobs?.length || 0}</span></div>{data?.jobs?.length ? data.jobs.map((job) => <article className="job-card" key={job.id}><h4>{displayValue(job.title)}</h4><p><strong>{displayValue(job.employer)}</strong> · {displayValue(job.location)}</p><p>{displayValue(job.description)}</p><p className="muted">{displayValue(job.occupation)} · প্রকাশিত {dateLabel(job.posted_at)}</p>{job.apply_url && <a href={job.apply_url} target="_blank" rel="noreferrer">আবেদনের পৃষ্ঠা ↗</a>}</article>) : <p className="muted empty-inline">এখনো কোনো যাচাইকৃত সক্রিয় চাকরি নেই। <a href="https://eures.europa.eu/index_en?lang=en" target="_blank" rel="noreferrer">EURES-এর সরকারি পোর্টালে ইতালির কাজ খুঁজুন ↗</a></p>}</section>
     </>}</div>}
   </article>;
 }

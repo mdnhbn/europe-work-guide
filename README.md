@@ -157,6 +157,9 @@ The starting Italy config is `scrapers/countries/italy.json` and includes these 
 - Scraped route data starts as `pending`. Set the optional GitHub Actions repository variable `AUTO_PUBLISH=true` only if you deliberately want routes with no numeric-source problems to publish automatically. It remains `false` in the supplied workflow. Human verification is the safer default.
 - To monitor another country, add one JSON file in `scrapers/countries/` with `code`, `name`, `language`, and a `sources` list. The engine automatically loads every JSON file in that folder. Put only appropriate official source URLs there and check their robots policy.
 - When the scraper reads a country config, it upserts that country as enabled in the existing `countries` table. Add a JSON file in `scrapers/countries/` to add a country; its status stays unknown until a human adds verified `country_access` data. Verified route and job rows appear as they are reviewed.
+## Curated initial Italy data
 
+The existing Supabase project now contains a human-reviewed Italy/Bangladesh access record and two 2026 quota-based work routes. The idempotent SQL seed is `database/seed_italy_bangladesh_2026.sql`; its source links include the Italian government, Ministry of Foreign Affairs, and European Commission. The data is time-sensitive: check remaining quotas and embassy checklists before relying on it.
 
+No individual job listings were fabricated. When the app has no verified active vacancy, it links to the official EURES portal so users can search current postings.
 

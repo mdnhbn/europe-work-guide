@@ -140,8 +140,10 @@ async function saveAds(input) {
 module.exports = async function adminApi(req, res) {
   if (req.method !== "GET" && req.method !== "POST") return sendError(res, 405, "Method not allowed");
   try {
+    const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
+    if (!token) return sendError(res, 401, "Sign in before accessing admin resources");
     const user = await authorizeAdmin(req);
-    if (!user) return sendError(res, 403, "Admin access is not configured for this account");
+    if (!user) return sendError(res, 403, "This account is not authorized to access admin resources");
 
     const url = new URL(req.url, "http://localhost");
     const resource = url.searchParams.get("resource");
