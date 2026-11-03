@@ -116,6 +116,8 @@ These values must not use the `VITE_` prefix and must never be committed. `.env.
 5. Save. Sign-up may require opening the email confirmation link before the first login.
 6. Check that the existing RLS policies allow users to select/upsert only their own `profiles` row and that public reads expose only verified rows. This app intentionally does not change tables or policies.
 
+For public email sign-ups, configure a custom SMTP server in **Authentication → Emails → SMTP Settings**. Email confirmation is enabled, and Supabase's built-in SMTP only sends to addresses belonging to the project team; it is not suitable for general users. Keep confirmation enabled for production. See the [Supabase SMTP guide](https://supabase.com/docs/guides/auth/auth-smtp).
+
 ### Enable Google, Facebook, and phone sign-in
 
 The app now shows Google and Facebook buttons on both the sign-up and login screens. Phone OTP works as a combined flow: a new number creates an account after OTP verification; an existing number signs in. The phone picker supports international country codes and sends the number to Supabase in E.164 format.
