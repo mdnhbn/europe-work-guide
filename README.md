@@ -1,12 +1,12 @@
 # Europe Work Guide
 
-Mobile-first Bengali web application that helps Bangladeshi workers compare official work-immigration information, keep a CV-style profile, review verified country access and visa routes, and prepare a printable CV. The React app reads and writes the existing Supabase tables; this project does not create or alter database tables. Live app: https://europe-work-guide.vercel.app
+Mobile-first Bengali web application that helps Bangladeshi workers compare official work-immigration information, keep a CV-style profile, review verified country access and visa routes, search verified jobs, and prepare a printable CV. It uses the existing Supabase tables. The migration `database/migrations/20261103_profiles_contact_details.sql` adds three nullable contact fields to `profiles`; it adds no tables or policies. Live app: https://europe-work-guide.vercel.app
 
 ## Production activation checklist
 
 The app code and deployment do not provide third-party credentials. Before all live workflows can run, configure these in their respective dashboards:
 
-- **Supabase Auth:** enable Google, Facebook, and Phone after adding valid provider credentials. For phone OTP, configure the SMS provider credentials and delivery settings. OAuth callback: `https://fpuxzekbqfipxusyxsao.supabase.co/auth/v1/callback`; allow the production URL in Supabase Auth redirect URLs.
+- **Supabase Auth:** set Site URL to `https://europe-work-guide.vercel.app` and allow `https://europe-work-guide.vercel.app/**` as a redirect. Configure custom SMTP for public email confirmations; Supabase's default SMTP only sends to project team addresses. Enable Google, Facebook, and Phone only after adding their provider credentials and SMS delivery settings. OAuth callback: `https://fpuxzekbqfipxusyxsao.supabase.co/auth/v1/callback`.
 - **GitHub Actions scraper:** add `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, and `ANTHROPIC_API_KEY` as repository Actions secrets. The workflow now reports all missing secret names without printing values.
 - **Vercel admin panel:** add `SUPABASE_SERVICE_KEY`, `ADMIN_EMAILS`, and a repository-scoped `GITHUB_TOKEN` with Contents read/write access. Admin review is required before scraped routes become visible; country access by nationality and job listings remain manually verified data.
 
@@ -24,6 +24,11 @@ The scraper never auto-publishes by default. Do not mark immigration data verifi
 ├── README.md
 ├── api/
 │   └── admin.js
+├── database/
+│   ├── migrations/
+│   │   ├── 20261103_profiles_contact_details.sql
+│   │   └── 20261103_source_pages_country_code_index.sql
+│   └── seed_italy_bangladesh_2026.sql
 ├── app/
 │   ├── index.html
 │   ├── package.json
@@ -93,7 +98,7 @@ git push
 
 ## 4. Configure the admin panel
 
-The signed-in account is shown the admin tab only when its Supabase Auth email appears in `ADMIN_EMAILS`. The API checks that allowlist on the server for every request. No database tables or RLS policies are added or changed. Admins can manage countries, country access, visa routes, jobs, and advertisements. Ads are committed to `app/public/ads.json`; when Vercel is connected to the GitHub repository, the new ad appears after that commit deploys.
+The signed-in account is shown the admin tab only when its Supabase Auth email appears in `ADMIN_EMAILS`. The API checks that allowlist on the server for every request. The admin API adds no tables or RLS policies. Admins can manage countries, country access, visa routes, jobs, and advertisements. Ads are committed to `app/public/ads.json`; when Vercel is connected to the GitHub repository, the new ad appears after that commit deploys.
 
 In Vercel **Settings → Environment Variables**, add these server-only values for the environments where you will use the admin panel:
 
@@ -114,7 +119,7 @@ These values must not use the `VITE_` prefix and must never be committed. `.env.
 3. Set **Site URL** to your deployed Vercel URL, for example `https://europe-work-guide.vercel.app`.
 4. Add `https://europe-work-guide.vercel.app/**` to **Redirect URLs**. While developing, also add `http://localhost:5173/**`.
 5. Save. Sign-up may require opening the email confirmation link before the first login.
-6. Check that the existing RLS policies allow users to select/upsert only their own `profiles` row and that public reads expose only verified rows. This app intentionally does not change tables or policies.
+6. The app creates one private profile row on a user's first authenticated session and upserts later edits. Existing RLS policies must allow each user to read/write only their own `profiles` row; public reads should expose only verified rows. The contact-field migration adds nullable `contact_email`, `phone`, and `address` columns without changing those policies.
 
 For public email sign-ups, configure a custom SMTP server in **Authentication → Emails → SMTP Settings**. Email confirmation is enabled, and Supabase's built-in SMTP only sends to addresses belonging to the project team; it is not suitable for general users. Keep confirmation enabled for production. See the [Supabase SMTP guide](https://supabase.com/docs/guides/auth/auth-smtp).
 
