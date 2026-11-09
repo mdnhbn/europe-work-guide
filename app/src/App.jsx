@@ -5,6 +5,7 @@ import 'react-phone-number-input/style.css';
 import { getOAuthProviderEnabled, isSupabaseConfigured, supabase } from './lib/supabase.js';
 import { isApplicableToProfile, matchRoute, scoreJobMatch } from './lib/matching.js';
 import { adminRequest } from './lib/adminApi.js';
+import { buildCvContent } from './lib/cvContent.js';
 import ComparisonPanel from './ComparisonPanel.jsx';
 import OfficialCountrySources from './OfficialCountrySources.jsx';
 import CoverLetterPanel from './CoverLetterPanel.jsx';
@@ -423,21 +424,74 @@ function JobsPanel({ profile, countries }) {
 function CvPanel({ profile, countries }) {
   const [destination, setDestination] = useState('IT');
   const [template, setTemplate] = useState('europass');
-  const countryName = countries.find((country) => country.code === destination)?.name || 'ইতালি';
-  return <section className="panel cv-panel"><div className="panel-heading no-print"><div><p className="eyebrow">নিজের পরিচয় তুলে ধরুন</p><h2>সিভি তৈরি</h2></div><button className="button button-primary" onClick={() => window.print()}>প্রিন্ট / PDF হিসেবে সংরক্ষণ</button></div><p className="muted no-print">প্রোফাইলে রাখা তথ্য দিয়ে প্রিভিউ তৈরি হয়েছে। যোগাযোগের তথ্য বদলাতে “আমার প্রোফাইল” ট্যাবে যান।</p>
-    <div className="cv-controls no-print"><Field label="গন্তব্য দেশ"><select value={destination} onChange={(e) => setDestination(e.target.value)}>{countries.length ? countries.map((country) => <option key={country.code} value={country.code}>{country.name}</option>) : <option value="IT">ইতালি</option>}</select></Field><Field label="সিভির ধরন"><select value={template} onChange={(e) => setTemplate(e.target.value)}><option value="europass">Europass-ধাঁচের (ছবি ছাড়া)</option><option value="tabular">টেবিল-ধাঁচের (ছবির জায়গাসহ)</option><option value="short">সংক্ষিপ্ত এক পৃষ্ঠা</option></select></Field></div>
-    <article className={`cv-paper cv-${template}`}><div className="cv-paper-top">{template === 'tabular' && <div className="photo-placeholder">ছবির<br />জায়গা</div>}<div><p className="cv-country">{countryName} · জীবনবৃত্তান্ত</p><h1>{profile.full_name || 'আপনার নাম'}</h1><p className="cv-contact">{[profile.contact_email, profile.phone, profile.address].filter(Boolean).join(' · ') || 'ইমেইল · ফোন · ঠিকানা যোগ করুন'}</p></div></div>
-      <CvSection title="ব্যক্তিগত তথ্য"><p>জন্মতারিখ: {profile.birth_date || '—'} · জাতীয়তা: {profile.nationality || 'Bangladesh'}</p></CvSection>
-      {profile.desired_occupations?.length > 0 && <CvSection title="কাঙ্ক্ষিত পেশা"><p>{profile.desired_occupations.join(' · ')}</p></CvSection>}
-      {profile.experience?.length > 0 && <CvSection title="কাজের অভিজ্ঞতা">{profile.experience.slice(0, template === 'short' ? 2 : undefined).map((item, i) => <div className="cv-entry" key={i}><strong>{item.title || 'পদ'}</strong><span>{item.employer}{item.country ? ` · ${item.country}` : ''}{item.years ? ` · ${item.years} বছর` : ''}</span>{item.description && <p>{item.description}</p>}</div>)}</CvSection>}
-      {profile.education?.length > 0 && <CvSection title="শিক্ষা">{profile.education.slice(0, template === 'short' ? 2 : undefined).map((item, i) => <div className="cv-entry" key={i}><strong>{item.degree || 'ডিগ্রি / সনদ'}</strong><span>{item.institution}{item.year ? ` · ${item.year}` : ''}</span></div>)}</CvSection>}
-      {profile.skills?.length > 0 && <CvSection title="দক্ষতা"><p>{profile.skills.slice(0, template === 'short' ? 8 : undefined).join(' · ')}</p></CvSection>}
-      {profile.languages?.length > 0 && <CvSection title="ভাষা">{profile.languages.slice(0, template === 'short' ? 4 : undefined).map((item, i) => <p key={i}>{item.name}: {item.level || 'স্তর উল্লেখ নেই'}</p>)}</CvSection>}
-    </article>
-  </section>;
-}
-function CvSection({ title, children }) {
-  return <section className="cv-section"><h2>{title}</h2>{children}</section>;
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
+  const country = countries.find((entry) => entry.code === destination) || countries[0];
+  const cv = buildCvContent(profile, country?.name || 'ইতালি', template);
+
+  async function handleDownload() {
+    setDownloading(true);
+    setDownloadError('');
+    try {
+      const { downloadCvPdf } = await import('./lib/cvPdf.jsx');
+      await downloadCvPdf(cv);
+    } catch {
+      setDownloadError('PDF তৈরি করা যায়নি। আবার চেষ্টা করুন বা প্রিন্ট থেকে PDF হিসেবে সংরক্ষণ করুন।');
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  return (
+    <section className="panel cv-panel">
+      <div className="panel-heading cv-heading no-print">
+        <div><p className="eyebrow">নিজের পরিচয় তুলে ধরুন</p><h2>সিভি তৈরি</h2></div>
+        <div className="cv-actions">
+          <button type="button" className="button button-primary" onClick={handleDownload} disabled={downloading}>
+            {downloading ? 'PDF তৈরি হচ্ছে…' : 'PDF ডাউনলোড'}
+          </button>
+          <button type="button" className="button button-light" onClick={() => window.print()}>প্রিন্ট / PDF হিসেবে সংরক্ষণ</button>
+        </div>
+      </div>
+      <p className="muted no-print">প্রোফাইলে রাখা তথ্য দিয়ে প্রিভিউ তৈরি হয়েছে। যোগাযোগের তথ্য বদলাতে “আমার প্রোফাইল” ট্যাবে যান।</p>
+      {downloadError && <div className="no-print"><ErrorMessage>{downloadError}</ErrorMessage></div>}
+      <div className="cv-controls no-print">
+        <Field label="গন্তব্য দেশ">
+          <select value={country?.code || 'IT'} onChange={(e) => setDestination(e.target.value)}>
+            {countries.length ? countries.map((entry) => <option key={entry.code} value={entry.code}>{entry.name}</option>) : <option value="IT">ইতালি</option>}
+          </select>
+        </Field>
+        <Field label="সিভির ধরন">
+          <select value={template} onChange={(e) => setTemplate(e.target.value)}>
+            <option value="europass">Europass-ধাঁচের (ছবি ছাড়া)</option>
+            <option value="tabular">টেবিল-ধাঁচের (ছবির জায়গাসহ)</option>
+            <option value="short">সংক্ষিপ্ত</option>
+          </select>
+        </Field>
+      </div>
+      <article className={`cv-paper cv-${template}`}>
+        <div className="cv-paper-top">
+          {cv.photoPlaceholder && <div className="photo-placeholder">ছবির<br />জায়গা</div>}
+          <div>
+            <p className="cv-country">{cv.subtitle}</p>
+            <h1>{cv.name}</h1>
+            <p className="cv-contact">{cv.contact}</p>
+          </div>
+        </div>
+        {cv.sections.map(({ title, entries }) => (
+          <section className="cv-section" key={title}>
+            <h2>{title}</h2>
+            {entries.map(({ heading, details, text }, index) => heading ? (
+              <div className="cv-entry" key={index}>
+                <strong>{heading}</strong><span>{details}</span>
+                {text && <p>{text}</p>}
+              </div>
+            ) : <p key={index}>{text}</p>)}
+          </section>
+        ))}
+      </article>
+    </section>
+  );
 }
 
 const ADMIN_SECTIONS = {
@@ -703,10 +757,3 @@ export default function App() {
     <Notice /><footer className="site-footer">সরকারি তথ্যের লিংক খুলে নিয়ম ও আবেদন পদ্ধতি নিজে যাচাই করুন।</footer>
   </div>;
 }
-
-
-
-
-
-
-

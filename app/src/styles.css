@@ -158,6 +158,8 @@ input::placeholder { color: #a0aea8; }
 .empty-state h3 { margin: 8px 0 3px; color: var(--ink); }
 .empty-state p { margin: 0; font-size: 13px; }
 .loading-line { color: var(--muted); font-size: 13px; }
+.cv-heading { flex-wrap: wrap; }
+.cv-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .cv-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; padding: 18px; margin-bottom: 23px; background: #f6f9f7; border-radius: 12px; }
 .cv-controls .field:last-child { grid-column: 1 / -1; }
 .cv-paper { max-width: 780px; min-height: 800px; padding: 46px 54px; margin: 0 auto; border: 1px solid #dfe6e1; background: #fff; box-shadow: 0 4px 20px #1a34230c; color: #1b2924; font-family: 'DM Sans', 'Noto Sans Bengali', sans-serif; }

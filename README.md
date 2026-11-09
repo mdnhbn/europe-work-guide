@@ -225,3 +225,7 @@ The existing Supabase project now contains a human-reviewed Italy/Bangladesh acc
 
 No individual job listings were fabricated. When the app has no verified active vacancy, it links to the official EURES portal so users can search current postings.
 
+
+## CV PDF download
+
+The CV tab can create a downloadable A4 PDF locally in the browser from the selected template and profile. The PDF renderer loads only when requested. The existing print option stays available. The bundled regular and bold Noto Sans Bengali fonts are static 400 and 700 weight instances of the [Noto Sans Bengali variable font](https://github.com/google/fonts/tree/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/notosansbengali), at normal width under the [SIL Open Font License](app/public/fonts/OFL-NotoSansBengali.txt).
