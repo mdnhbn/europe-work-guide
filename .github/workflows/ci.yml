@@ -34,10 +34,11 @@ jobs:
       - name: Run matching unit tests
         working-directory: app
         run: npm test
-      - name: Validate serverless API syntax
+      - name: Validate serverless API syntax and account deletion flow
         run: |
           node --check api/admin.js
           node --check api/account-delete.js
+          node --test api/account-delete.test.js
       - name: Build production frontend
         working-directory: app
         run: npm run build
