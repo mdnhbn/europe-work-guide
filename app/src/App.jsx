@@ -3,7 +3,7 @@ import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input';
 import phoneLabels from 'react-phone-number-input/locale/en';
 import 'react-phone-number-input/style.css';
 import { getOAuthProviderEnabled, isSupabaseConfigured, supabase } from './lib/supabase.js';
-import { isApplicableToProfile, matchRoute } from './lib/matching.js';
+import { isApplicableToProfile, matchRoute, scoreJobMatch } from './lib/matching.js';
 import { adminRequest } from './lib/adminApi.js';
 import ComparisonPanel from './ComparisonPanel.jsx';
 import CoverLetterPanel from './CoverLetterPanel.jsx';
@@ -373,23 +373,19 @@ function JobsPanel({ profile, countries }) {
     if (!normalizedQuery) return true;
     const searchable = [job.title, job.occupation, job.employer, job.location, job.description].filter(Boolean).join(' ').toLocaleLowerCase();
     return searchable.includes(normalizedQuery);
-  }).sort((a, b) => {
-    const occupationA = String(a.occupation || '').trim().toLocaleLowerCase();
-    const occupationB = String(b.occupation || '').trim().toLocaleLowerCase();
-    const matchA = desiredOccupations.some((occupation) => occupationA === occupation);
-    const matchB = desiredOccupations.some((occupation) => occupationB === occupation);
-    if (matchA !== matchB) return matchA ? -1 : 1;
+  }).map((job) => ({ ...job, match: scoreJobMatch(profile, job) })).sort((a, b) => {
+    if (a.match.score !== b.match.score) return b.match.score - a.match.score;
     return String(b.posted_at || '').localeCompare(String(a.posted_at || ''));
   });
 
-  const profileMatch = (job) => desiredOccupations.includes(String(job.occupation || '').trim().toLocaleLowerCase());
+  const profileMatch = (job) => scoreJobMatch(profile, job).occupationMatch;
   const hasVerifiedJobs = jobs.length > 0;
   return <section className="panel jobs-panel"><div className="panel-heading"><div><p className="eyebrow">প্রোফাইল-ভিত্তিক খোঁজ</p><h2>চাকরি খুঁজুন</h2></div><span className="count-pill">{loading ? '…' : `${visibleJobs.length}টি`}</span></div>
-    <p className="muted">এখানে শুধু যাচাইকৃত ও সক্রিয় চাকরি দেখানো হয়। আপনার পছন্দের পেশার সঙ্গে হুবহু নাম মিললে সেটি আগে দেখানো হবে; চাকরির মিল ভিসার যোগ্যতা নিশ্চিত করে না।</p>
+    <p className="muted">এখানে শুধু যাচাইকৃত ও সক্রিয় চাকরি দেখানো হয়। স্কোরটি প্রোফাইলের পেশা, দক্ষতার শব্দ, অভিজ্ঞতা ও পছন্দের দেশের ভিত্তিতে একটি আনুমানিক মিল—এটি নিয়োগ বা ভিসার যোগ্যতার নিশ্চয়তা নয়।</p>
     {desiredOccupations.length > 0 && <div className="job-suggestions"><span>আপনার পছন্দের পেশা:</span>{profile.desired_occupations.map((occupation, index) => <button type="button" className="suggestion-chip" key={`${occupation}-${index}`} onClick={() => setQuery(occupation)}>{occupation}</button>)}</div>}
     <div className="job-search-controls"><Field label="পেশা বা কীওয়ার্ড"><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="যেমন: Cook, Care worker" /></Field><Field label="দেশ"><select value={countryCode} onChange={(event) => setCountryCode(event.target.value)}><option value="">সব দেশ</option>{countries.map((country) => <option key={country.code} value={country.code}>{country.name}</option>)}</select></Field></div>
     <ErrorMessage>{error}</ErrorMessage>
-    {loading ? <div className="loading-state">যাচাইকৃত চাকরি খোঁজা হচ্ছে…</div> : error ? null : visibleJobs.length > 0 ? <div className="job-results">{visibleJobs.map((job) => <article className="job-card" key={job.id}><div className="job-title-row"><div><h3>{displayValue(job.title)}</h3><p className="muted">{countries.find((country) => country.code === job.country_code)?.name || job.country_code} · {displayValue(job.location)}</p></div>{profileMatch(job) && <span className="verified-tag">পছন্দের পেশার সঙ্গে মেলে</span>}</div><p><strong>{displayValue(job.employer)}</strong> · {displayValue(job.occupation)}</p><p>{displayValue(job.description)}</p><p className="muted">প্রকাশিত {dateLabel(job.posted_at)}</p>{job.apply_url && <a href={job.apply_url} target="_blank" rel="noreferrer">আবেদনের পৃষ্ঠা ↗</a>}</article>)}</div> : <div className="empty-state"><span>🔎</span><h3>{hasVerifiedJobs ? 'এই অনুসন্ধানে কোনো যাচাইকৃত চাকরি মেলেনি' : 'এখনো কোনো যাচাইকৃত সক্রিয় চাকরি নেই'}</h3><p>{hasVerifiedJobs ? 'অন্য পেশা বা দেশ দিয়ে চেষ্টা করুন, অথবা EURES-এ সরাসরি খুঁজুন।' : 'EURES-এর সরকারি চাকরি অনুসন্ধানে দেশ ও পেশা বেছে বর্তমান বিজ্ঞপ্তি দেখুন।'}</p><a className="button button-primary" href="https://europa.eu/eures/portal/jv-se/home?pageCode=find_a_job" target="_blank" rel="noreferrer">EURES-এ চাকরি খুঁজুন ↗</a></div>}
+    {loading ? <div className="loading-state">যাচাইকৃত চাকরি খোঁজা হচ্ছে…</div> : error ? null : visibleJobs.length > 0 ? <div className="job-results">{visibleJobs.map((job) => <article className="job-card" key={job.id}><div className="job-title-row"><div><h3>{displayValue(job.title)}</h3><p className="muted">{countries.find((country) => country.code === job.country_code)?.name || job.country_code} · {displayValue(job.location)}</p></div><span className="job-match-score" title={job.match.reasons.join(' · ')}>{job.match.score}% প্রোফাইল মিল</span></div><p><strong>{displayValue(job.employer)}</strong> · {displayValue(job.occupation)}</p><p>{displayValue(job.description)}</p>{job.match.reasons.length > 0 && <ul className="job-match-reasons">{job.match.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}<p className="muted">প্রকাশিত {dateLabel(job.posted_at)}</p>{job.apply_url && <a href={job.apply_url} target="_blank" rel="noreferrer">আবেদনের পৃষ্ঠা ↗</a>}</article>)}</div> : <div className="empty-state"><span>🔎</span><h3>{hasVerifiedJobs ? 'এই অনুসন্ধানে কোনো যাচাইকৃত চাকরি মেলেনি' : 'এখনো কোনো যাচাইকৃত সক্রিয় চাকরি নেই'}</h3><p>{hasVerifiedJobs ? 'অন্য পেশা বা দেশ দিয়ে চেষ্টা করুন, অথবা EURES-এ সরাসরি খুঁজুন।' : 'EURES-এর সরকারি চাকরি অনুসন্ধানে দেশ ও পেশা বেছে বর্তমান বিজ্ঞপ্তি দেখুন।'}</p><a className="button button-primary" href="https://europa.eu/eures/portal/jv-se/home?pageCode=find_a_job" target="_blank" rel="noreferrer">EURES-এ চাকরি খুঁজুন ↗</a></div>}
   </section>;
 }
 
