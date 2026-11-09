@@ -346,3 +346,20 @@ input::placeholder { color: #a0aea8; }
 .audit-entry>div strong{font-size:12px}.audit-entry>div span,.audit-entry p,.audit-entry time{font-size:11px;color:var(--muted)}
 .audit-entry p{margin:0}.audit-entry time{grid-column:1/-1}
 @media(max-width:700px){.maintenance-action,.maintenance-audit{align-items:stretch;flex-direction:column}.maintenance-action button{width:100%}.backup-counts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.source-manager{margin-top:22px}
+.source-toolbar{display:flex;align-items:end;gap:12px;margin:15px 0}
+.source-toolbar .field{flex:1;max-width:560px}
+.source-json-editor{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;line-height:1.6;white-space:pre;tab-size:2}
+.source-history{margin-top:24px;padding-top:18px;border-top:1px solid var(--line)}
+.source-history .section-heading{align-items:center}
+.source-history .section-heading h3{margin:0;font-size:14px}
+.source-history-list{display:grid;gap:8px}
+.source-history-row{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--line);border-radius:10px;padding:12px}
+.source-history-row>div{display:grid;gap:5px;min-width:0}
+.source-history-row strong{font-size:12px}
+.source-history-row a{font-size:12px;overflow-wrap:anywhere}
+.source-history-row small{font-size:10px;color:var(--muted)}
+.source-changed,.source-unchanged{flex-shrink:0;border-radius:99px;padding:5px 8px;font-size:10px}
+.source-changed{background:#fff0d8;color:#81500a}.source-unchanged{background:#eaf6ef;color:#246347}
+@media(max-width:700px){.source-toolbar{align-items:stretch;flex-direction:column}.source-toolbar .field{max-width:none}.source-toolbar button{width:100%}.source-history-row{align-items:flex-start;flex-direction:column}}
