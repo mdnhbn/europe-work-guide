@@ -109,6 +109,7 @@ function encryptBackup(payload) {
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   const compressed = gzipSync(Buffer.from(JSON.stringify(payload), "utf8"));
   const ciphertext = Buffer.concat([cipher.update(compressed), cipher.final()]);
+  if (ciphertext.length > 3 * 1024 * 1024) throw new Error("Encrypted backup exceeds the 3 MB API transfer limit; export a smaller dataset or use a direct storage backup");
   return {
     format: "europe-work-guide-encrypted-backup",
     version: 1,
@@ -289,7 +290,7 @@ module.exports = async function adminApi(req, res) {
       if (action === "export") {
         const tables = {};
         for (const item of BACKUP_TABLES) tables[item.name] = await fetchAllRows(item.name);
-        const ads = await readAds().catch(() => ({ ads: [] }));
+        const ads = await readAds();
         const payload = {
           export_version: "1.0",
           exported_at: new Date().toISOString(),
