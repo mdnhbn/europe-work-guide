@@ -138,7 +138,7 @@ async function saveAds(input) {
 }
 
 module.exports = async function adminApi(req, res) {
-  if (req.method !== "GET" && req.method !== "POST") return sendError(res, 405, "Method not allowed");
+  if (!["GET", "POST", "DELETE"].includes(req.method)) return sendError(res, 405, "Method not allowed");
   try {
     const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
     if (!token) return sendError(res, 401, "Sign in before accessing admin resources");
@@ -178,8 +178,34 @@ module.exports = async function adminApi(req, res) {
       return res.status(200).json({ generated_at: new Date().toISOString(), counts });
     }
 
+    if (resource === "ads" && req.method === "DELETE") {
+      const id = String(req.body?.id || "").trim();
+      if (!id) return sendError(res, 400, "Advertisement id is required");
+      const current = await readAds();
+      const next = current.ads.filter((item) => String(item.id) !== id);
+      if (next.length === current.ads.length) return sendError(res, 404, "Advertisement not found");
+      const result = await saveAds(next);
+      return res.status(200).json({ deleted: true, id, commit: result.commit });
+    }
+
     if (resource === "ads") {
-      if (req.method === "GET") {
+      if (req.method === "DELETE") {
+      const deletable = new Set(["country_access", "visa_routes", "jobs"]);
+      if (!deletable.has(resource)) return sendError(res, 403, "This resource cannot be deleted through the admin API");
+      const input = req.body && typeof req.body === "object" ? req.body : {};
+      const id = String(input.id || "").trim();
+      if (!id || id.length > 160) return sendError(res, 400, "A valid record id is required");
+      const base = supabaseBase();
+      if (!base || !env("SUPABASE_SERVICE_KEY")) return sendError(res, 500, "Admin database is not configured");
+      const deleteUrl = `${base}/rest/v1/${resource}?id=eq.${encodeURIComponent(id)}`;
+      const deleted = await fetch(deleteUrl, { method: "DELETE", headers: serviceHeaders("return=representation") });
+      if (!deleted.ok) return sendError(res, 502, "Could not delete the record");
+      const rows = await deleted.json().catch(() => []);
+      if (!Array.isArray(rows) || rows.length === 0) return sendError(res, 404, "Record not found");
+      return res.status(200).json({ deleted: true, id });
+    }
+
+    if (req.method === "GET") {
         const result = await readAds();
         return res.status(200).json(result.ads);
       }

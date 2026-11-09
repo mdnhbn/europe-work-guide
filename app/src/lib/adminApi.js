@@ -7,9 +7,9 @@ export async function adminRequest(resource, method = 'GET', payload) {
     method,
     headers: {
       Authorization: `Bearer ${data.session.access_token}`,
-      ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
+      ...(['POST', 'DELETE'].includes(method) ? { 'Content-Type': 'application/json' } : {}),
     },
-    ...(method === 'POST' ? { body: JSON.stringify(payload || {}) } : {}),
+    ...(['POST', 'DELETE'].includes(method) ? { body: JSON.stringify(payload || {}) } : {}),
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'অ্যাডমিন অনুরোধ সম্পন্ন হয়নি।');
