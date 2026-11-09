@@ -363,3 +363,6 @@ input::placeholder { color: #a0aea8; }
 .source-changed,.source-unchanged{flex-shrink:0;border-radius:99px;padding:5px 8px;font-size:10px}
 .source-changed{background:#fff0d8;color:#81500a}.source-unchanged{background:#eaf6ef;color:#246347}
 @media(max-width:700px){.source-toolbar{align-items:stretch;flex-direction:column}.source-toolbar .field{max-width:none}.source-toolbar button{width:100%}.source-history-row{align-items:flex-start;flex-direction:column}}
+
+.job-match-score{display:inline-flex;align-items:center;border:1px solid #cfe6d7;background:#eff8f2;color:#226544;border-radius:999px;padding:5px 9px;font-size:10px;font-weight:700;white-space:nowrap}
+.job-match-reasons{margin:8px 0 12px;padding-left:20px;color:var(--muted);font-size:12px;line-height:1.7}
