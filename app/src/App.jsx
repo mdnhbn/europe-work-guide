@@ -408,7 +408,7 @@ const ADMIN_SECTIONS = {
     { name: "languages", label: "ভাষা", type: "csv" }, { name: "enabled", label: "দেশটি সক্রিয়", type: "checkbox", defaultValue: true },
   ] },
   country_access: { label: "জাতীয়তা প্রবেশ", key: "id", fields: [
-    { name: "country_code", label: "দেশের কোড", required: true }, { name: "nationality", label: "জাতীয়তা", defaultValue: "Bangladesh", required: true },
+    { name: "country_code", label: "দেশের কোড", required: true }, { name: "nationality", label: "জাতীয়তা", defaultValue: "Bangladesh", required: true }, { name: "residence_country", label: "বর্তমান বসবাসের দেশ (ANY = সবার জন্য)", defaultValue: "ANY", required: true },
     { name: "access_status", label: "প্রবেশের অবস্থা", type: "select", options: [["open", "খোলা"], ["limited", "সীমিত"], ["closed", "বন্ধ"], ["unknown", "তথ্য নেই"]], defaultValue: "unknown" },
     { name: "quota_included", label: "কোটা অন্তর্ভুক্ত", type: "checkbox" }, { name: "restrictions", label: "সীমাবদ্ধতা / নোট", type: "textarea" },
     { name: "apply_where", label: "কোথায় আবেদন করবেন", type: "textarea" }, { name: "documents_note", label: "নথির নোট", type: "textarea" },
@@ -416,7 +416,7 @@ const ADMIN_SECTIONS = {
     { name: "last_verified", label: "সর্বশেষ যাচাই", type: "date" },
   ] },
   visa_routes: { label: "ভিসা পথ", key: "id", fields: [
-    { name: "country_code", label: "দেশের কোড", required: true }, { name: "route_type", label: "রুটের ধরন", required: true },
+    { name: "country_code", label: "দেশের কোড", required: true }, { name: "nationality", label: "জাতীয়তা (ANY = সবার জন্য)", defaultValue: "ANY", required: true }, { name: "residence_country", label: "বর্তমান বসবাসের দেশ (ANY = সবার জন্য)", defaultValue: "ANY", required: true }, { name: "route_type", label: "রুটের ধরন", required: true },
     { name: "title", label: "শিরোনাম", required: true }, { name: "summary", label: "সারাংশ", type: "textarea" },
     { name: "requirements", label: "শর্ত (JSON)", type: "json", defaultValue: "{}" }, { name: "documents", label: "নথি (JSON)", type: "json", defaultValue: "[]" },
     { name: "fees", label: "ফি (JSON)", type: "json", defaultValue: "[]" }, { name: "steps", label: "ধাপ (JSON)", type: "json", defaultValue: "[]" },
