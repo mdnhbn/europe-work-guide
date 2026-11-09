@@ -40,6 +40,8 @@ The project owner must add these server-only values in Vercel. Never put the ser
 
 The connected Supabase project currently reports only these applied migrations: `initial_schema`, `index_source_pages_country_code`, and `profiles_contact_details`. The audit, residence-aware, and structured-jobs migrations above are still unapplied; the live `public` table inventory also has no `admin_audit_log` table. Do not treat audit logging, residence/target-country persistence, or structured job fields as operational until the owner applies the migrations and verifies the schema.
 
+After the migrations, run the [read-only release schema checks](../database/verify_release_schema.sql) and [audit checks](../database/verify_admin_audit.sql) in the intended project. Expect every returned flag to be true. Test Auth and admin workflows in staging with test accounts before enabling the production configuration.
+
 ## PRD gaps still open
 
 - To activate the admin flow, add the server configuration, apply the audit migration, enroll the allowlisted admin in TOTP and verify the live flow.
