@@ -12,7 +12,7 @@ The production UI now includes:
 
 The latest production commit also passed the Vercel production build. Automated GitHub Actions status should be checked under the repository's Actions tab; the connector did not return a workflow-run record during this update.
 
-The privacy/terms content is a first-release draft and must be completed with the operator's legal identity and support contact before treating it as final. Profile JSON export and a self-service account deletion endpoint are implemented, but deletion must be tested against the live Supabase project and the server-only service key must be configured. Automated retention/deletion is still not implemented.
+The privacy/terms content is a first-release draft and must be completed with the operator's legal identity and support contact before treating it as final. Profile JSON export and a self-service account deletion endpoint are implemented; automated endpoint tests and a live verification runbook are included, but live verification still needs the server-only service key. Automated retention is not implemented because the operator must first define a lawful retention period.
 
 ## Latest implementation update
 
@@ -20,7 +20,7 @@ The production branch now includes country comparison, an editable cover-letter 
 
 These changes extend the existing Supabase/Vercel app rather than replacing its backend. Google/Facebook/phone authentication depends on provider credentials in Supabase. Admin endpoints depend on server-only Vercel environment variables. The scheduled official-source scraper depends on GitHub Actions secrets.
 
-**Still not fully implemented or not independently verified:** production-ready retention/deletion policy, current-residence-specific matching, every PRD admin module, a fully encrypted restore/preview workflow, all country-specific CV conventions, and full end-to-end authentication/admin testing against live Supabase. Self-service account deletion code is included, but it requires the server-only `SUPABASE_SERVICE_KEY` environment variable and must be verified against the live Supabase project. The latest Vercel build is not proof that external provider credentials or all live data operations are configured correctly. Encrypted full-backup export/preview/restore code is now included, with a 3 MB encrypted-payload safety limit; it requires `BACKUP_ENCRYPTION_KEY`, `SUPABASE_SERVICE_KEY`, GitHub Contents write access, and the audit migration below.
+**Still not fully implemented or not independently verified:** production-ready retention/deletion policy, current-residence-specific matching, every PRD admin module, a fully encrypted restore/preview workflow, all country-specific CV conventions, and full end-to-end authentication/admin testing against live Supabase. Self-service account deletion code and mock-based endpoint tests are included, with a runbook for live verification. Live verification requires the server-only `SUPABASE_SERVICE_KEY` environment variable. Automated retention remains unimplemented until the operator defines and approves a retention policy. The latest Vercel build is not proof that external provider credentials or all live data operations are configured correctly. Encrypted full-backup export/preview/restore code is now included, with a 3 MB encrypted-payload safety limit; it requires `BACKUP_ENCRYPTION_KEY`, `SUPABASE_SERVICE_KEY`, GitHub Contents write access, and the audit migration below.
 
 ## Admin source registry and job matching
 

@@ -16,7 +16,7 @@ This file tracks implementation evidence separately from items that still need c
 - [x] Admin API source registry and manual scraper workflow dispatch code.
 - [x] AES-256-GCM + gzip backup export, validation/preview, merge restore, and empty-database-only full restore code, with 3 MB transfer limit.
 - [x] Append-only admin audit log schema and API write/read code.
-- [x] Account deletion endpoint verifies the signed-in user and attempts to remove the linked profile.
+- [x] Account deletion endpoint verifies the signed-in user and has mock-based tests for profile and Auth deletion. Live verification is pending.
 - [x] GitHub Actions run `42567214613` for main commit `91c147ea82e3407a657b03feb030bfca2906eec9`: all four Ubuntu/Windows frontend, API syntax, and scraper validation jobs passed.
 - [x] Vercel production deployment for main commit `91c147ea82e3407a657b03feb030bfca2906eec9` reached READY; the production homepage returned HTTP 200 on 9 November 2026.
 
@@ -48,7 +48,7 @@ The connected Supabase project currently reports only these applied migrations: 
 - Italy-specific verified roadmaps for every required nationality/residence combination and all other country roadmaps remain incomplete; no visa rule should be inferred or fabricated.
 - CV country-specific conventions, PDF upload, generated-document version history, and ReportLab/WeasyPrint server-side PDF generation are incomplete; the current browser flow uses print-to-PDF.
 - Ad network script units, pop-under runtime, and full session frequency controls are not implemented. Current release uses safe banner ads, a global switch, banner interval, and optional suppression on warning pages.
-- Complete user management, privacy-safe analytics, full settings, and an end-to-end audit verification pass remain open. The audit migration is not applied, and the API currently logs audit-write failures without failing the underlying mutation.
+- Complete user management, privacy-safe analytics, full settings, and an end-to-end audit verification pass remain open. The audit migration is not applied. See the [read-only schema check and audit runbook](retention-and-audit-verification.md).
 - The deployed architecture is currently React/Vite + Supabase + Vercel serverless APIs, rather than the PRD's preferred FastAPI/SQLAlchemy backend. A full migration to the PRD stack has not been done.
 
 ## Safe launch rule
