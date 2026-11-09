@@ -3,7 +3,7 @@ import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input';
 import phoneLabels from 'react-phone-number-input/locale/en';
 import 'react-phone-number-input/style.css';
 import { getOAuthProviderEnabled, isSupabaseConfigured, supabase } from './lib/supabase.js';
-import { matchRoute } from './lib/matching.js';
+import { isApplicableToProfile, matchRoute } from './lib/matching.js';
 import { adminRequest } from './lib/adminApi.js';
 import ComparisonPanel from './ComparisonPanel.jsx';
 import CoverLetterPanel from './CoverLetterPanel.jsx';
@@ -307,7 +307,7 @@ function CountriesPanel({ profile }) {
       ]);
       if (!active) return;
       if (countryResult.error || accessResult.error) setError('দেশের তালিকা লোড করা যায়নি। পরে আবার চেষ্টা করুন।');
-      else { setCountries(countryResult.data || []); setAccessRows((accessResult.data || []).filter((row) => !row.residence_country || row.residence_country === 'ANY' || row.residence_country === residence).sort((a, b) => Number(a.residence_country === residence) - Number(b.residence_country === residence))); }
+      else { setCountries(countryResult.data || []); setAccessRows((accessResult.data || []).filter((row) => isApplicableToProfile({ nationality, current_residence_country: residence }, row)).sort((a, b) => Number(a.residence_country === residence) - Number(b.residence_country === residence))); }
       setLoading(false);
     })();
     return () => { active = false; };
@@ -329,7 +329,7 @@ function CountriesPanel({ profile }) {
       supabase.from('jobs').select('*').eq('country_code', country.code).eq('review_status', 'verified').eq('active', true).order('posted_at', { ascending: false }),
     ]);
     if (routeResult.error || jobResult.error) setCountryErrors((current) => ({ ...current, [country.code]: 'এই দেশের তথ্য লোড করা যায়নি। পরে আবার চেষ্টা করুন।' }));
-    else setCountryData((current) => ({ ...current, [country.code]: { routes: (routeResult.data || []).filter((route) => (!route.nationality || route.nationality === 'ANY' || route.nationality === nationality) && (!route.residence_country || route.residence_country === 'ANY' || route.residence_country === residence)), jobs: jobResult.data || [] } }));
+    else setCountryData((current) => ({ ...current, [country.code]: { routes: (routeResult.data || []).filter((route) => isApplicableToProfile({ nationality, current_residence_country: residence }, route)), jobs: jobResult.data || [] } }));
     setCountryLoading((current) => ({ ...current, [country.code]: false }));
   };
   return <section className="panel countries-panel"><div className="panel-heading"><div><p className="eyebrow">দেশ ও সুযোগ</p><h2>দেশ ও চাকরি</h2></div><span className="nationality-pill">জাতীয়তা: {nationality}</span></div><p className="muted">অবস্থা কেবল যাচাইকৃত তথ্য থেকে দেখানো হয়। দেশ খুলে রুটের শর্ত, ফি, নথি ও সরকারি লিংক দেখুন।</p><ErrorMessage>{error}</ErrorMessage>
