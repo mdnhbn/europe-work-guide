@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createCipheriv } = require("node:crypto");
 const { gzipSync } = require("node:zlib");
-const adminApi = require("./admin");
+const adminApi = require("../../api/admin");
 
 const backupKey = "ab".repeat(32);
 

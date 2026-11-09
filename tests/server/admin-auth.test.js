@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { hasAal2TotpSession } = require("./admin-auth");
+const { hasAal2TotpSession } = require("../../server/admin-auth");
 
 function makeToken(claims) {
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");

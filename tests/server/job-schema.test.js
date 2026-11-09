@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { computeJobFingerprint, validateStructuredJob } = require("./job-schema");
+const { computeJobFingerprint, validateStructuredJob } = require("../../server/job-schema");
 
 const validJob = {
   country_code: "IT",

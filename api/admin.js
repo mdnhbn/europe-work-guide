@@ -1,7 +1,7 @@
 const { randomUUID, createCipheriv, createDecipheriv, randomBytes } = require("crypto");
 const { gzipSync, gunzipSync } = require("zlib");
-const { hasAal2TotpSession } = require("./admin-auth");
-const { STRUCTURED_JOB_FIELDS, computeJobFingerprint, validateStructuredJob } = require("./job-schema");
+const { hasAal2TotpSession } = require("../server/admin-auth");
+const { STRUCTURED_JOB_FIELDS, computeJobFingerprint, validateStructuredJob } = require("../server/job-schema");
 
 const TABLES = {
   countries: {

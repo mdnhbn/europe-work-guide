@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const accountDelete = require("./account-delete");
+const accountDelete = require("../../api/account-delete");
 
 const envNames = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_KEY"];
 let originalEnv;
