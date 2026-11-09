@@ -216,6 +216,15 @@ function ProfileForm({ profile, userId, onSaved }) {
   useEffect(() => setForm(profile), [profile]);
   const setValue = (key, value) => { setForm((current) => ({ ...current, [key]: value })); setSaved(false); };
   const updateList = (key, value) => { setValue(key, value); };
+  const completenessValues = [
+    form.full_name, form.contact_email, form.phone, form.birth_date, form.nationality,
+    Array.isArray(form.education) && form.education.some((item) => item.degree || item.institution),
+    Array.isArray(form.experience) && form.experience.some((item) => item.title || item.employer || item.description),
+    Array.isArray(form.skills) && form.skills.length > 0,
+    Array.isArray(form.languages) && form.languages.some((item) => item.name && item.level),
+    Array.isArray(form.desired_occupations) && form.desired_occupations.length > 0,
+  ];
+  const completeness = Math.round(completenessValues.filter((value) => Array.isArray(value) ? value.length > 0 : typeof value === 'string' ? value.trim().length > 0 : Boolean(value)).length / completenessValues.length * 100);
   const submit = async (event) => {
     event.preventDefault(); setBusy(true); setError(''); setSaved(false);
     const payload = {
@@ -241,6 +250,7 @@ function ProfileForm({ profile, userId, onSaved }) {
     finally { setBusy(false); }
   };
   return <form className="panel profile-form" onSubmit={submit}><div className="panel-heading"><div><p className="eyebrow">আপনার তথ্য</p><h2>আমার প্রোফাইল</h2></div><span className="privacy-pill">🔒 শুধু আপনার অ্যাকাউন্ট</span></div><p className="muted">আপনার দেওয়া তথ্য দিয়ে ভিসা পথের শর্ত মিলিয়ে দেখা হবে। কোনো তথ্য অনুমান করা হবে না।</p>
+    <section className="profile-completeness" aria-label="প্রোফাইল সম্পূর্ণতা"><div className="section-heading"><h3>প্রোফাইল সম্পূর্ণতা</h3><strong>{completeness}%</strong></div><div className="progress-track" role="progressbar" aria-valuenow={completeness} aria-valuemin="0" aria-valuemax="100"><span style={{ width: `${completeness}%` }} /></div><p className="muted">শিক্ষা, কাজের অভিজ্ঞতা, দক্ষতা, ভাষা ও পছন্দের পেশা যোগ করলে চাকরির মিল আরও উপযোগী হবে। অনুপস্থিত তথ্য অনুমান করে পূরণ করা হয় না।</p></section>
     <div className="form-grid"><Field label="পুরো নাম"><input value={form.full_name || ''} onChange={(e) => setValue('full_name', e.target.value)} autoComplete="name" /></Field><Field label="জন্মতারিখ"><input type="date" value={form.birth_date || ''} onChange={(e) => setValue('birth_date', e.target.value)} /></Field><Field label="জাতীয়তা"><input value={form.nationality || ''} onChange={(e) => setValue('nationality', e.target.value)} placeholder="Bangladesh" /></Field><Field label="যোগাযোগের ইমেইল"><input type="email" autoComplete="email" value={form.contact_email || ''} onChange={(e) => setValue('contact_email', e.target.value)} /></Field><Field label="ফোন নম্বর"><input type="tel" autoComplete="tel" value={form.phone || ''} onChange={(e) => setValue('phone', e.target.value)} /></Field><Field label="ঠিকানা"><input autoComplete="street-address" value={form.address || ''} onChange={(e) => setValue('address', e.target.value)} /></Field><Field label="পছন্দের পেশা" hint="কমা দিয়ে আলাদা করুন"><input value={arrayToCsv(form.desired_occupations)} onChange={(e) => setValue('desired_occupations', csvToArray(e.target.value))} placeholder="যেমন: Cook, Care worker" /></Field><Field label="দক্ষতা" hint="কমা দিয়ে আলাদা করুন"><input value={arrayToCsv(form.skills)} onChange={(e) => setValue('skills', csvToArray(e.target.value))} placeholder="যেমন: রান্না, ওয়েল্ডিং" /></Field></div>
     <RepeatableList title="শিক্ষা" entries={form.education || []} onChange={(v) => updateList('education', v)} emptyEntry={{ degree: '', institution: '', year: '' }} fields={[{ name: 'degree', label: 'ডিগ্রি / সনদ' }, { name: 'institution', label: 'প্রতিষ্ঠান' }, { name: 'year', label: 'বছর', type: 'number' }]} />
     <RepeatableList title="কাজের অভিজ্ঞতা" entries={form.experience || []} onChange={(v) => updateList('experience', v)} emptyEntry={{ title: '', employer: '', country: '', years: '', description: '' }} fields={[{ name: 'title', label: 'পদ / কাজ' }, { name: 'employer', label: 'প্রতিষ্ঠান' }, { name: 'country', label: 'দেশ' }, { name: 'years', label: 'বছর', type: 'number' }, { name: 'description', label: 'কাজের বিবরণ' }]} />
