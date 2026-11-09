@@ -20,7 +20,19 @@ The production branch now includes country comparison, an editable cover-letter 
 
 These changes extend the existing Supabase/Vercel app rather than replacing its backend. Google/Facebook/phone authentication depends on provider credentials in Supabase. Admin endpoints depend on server-only Vercel environment variables. The scheduled official-source scraper depends on GitHub Actions secrets.
 
-**Still not fully implemented or not independently verified:** production-ready retention/deletion policy, current-residence-specific matching, every PRD admin module, a fully encrypted restore/preview workflow, all country-specific CV conventions, and full end-to-end authentication/admin testing against live Supabase. Self-service account deletion code is included, but it requires the server-only `SUPABASE_SERVICE_KEY` environment variable and must be verified against the live Supabase project. The latest Vercel build is not proof that external provider credentials or all live data operations are configured correctly.
+**Still not fully implemented or not independently verified:** production-ready retention/deletion policy, current-residence-specific matching, every PRD admin module, a fully encrypted restore/preview workflow, all country-specific CV conventions, and full end-to-end authentication/admin testing against live Supabase. Self-service account deletion code is included, but it requires the server-only `SUPABASE_SERVICE_KEY` environment variable and must be verified against the live Supabase project. The latest Vercel build is not proof that external provider credentials or all live data operations are configured correctly. Encrypted full-backup export/preview/restore code is now included, with a 3 MB encrypted-payload safety limit; it requires `BACKUP_ENCRYPTION_KEY`, `SUPABASE_SERVICE_KEY`, GitHub Contents write access, and the audit migration below.
+
+## Encrypted backup and audit log
+
+The admin panel includes an encrypted JSON export, backup validation/preview, merge restore, and full restore only when the supported database tables are empty. The backup is gzip-compressed and encrypted with AES-256-GCM. Transfers are limited to 3 MB of encrypted payload because serverless request/response bodies have size limits. Larger production datasets need direct object storage (S3-compatible or Supabase Storage) rather than this API transfer route.
+
+Before using these features:
+1. Set a random 32-byte `BACKUP_ENCRYPTION_KEY` in Vercel server-only environment variables (64 hex characters or base64). Keep it outside the database and retain it securely; losing it makes old backups unrecoverable.
+2. Apply `database/migrations/20261109_admin_backup_audit.sql` in the Supabase SQL Editor. It creates an append-only audit log table with no browser-user access.
+3. Ensure `SUPABASE_SERVICE_KEY` and the repository-scoped `GITHUB_TOKEN` are configured. Backups include the current ad configuration, so the GitHub token is required.
+4. After changing environment variables, redeploy Vercel.
+
+Restore uses merge-upsert semantics for supported tables. A restore may partially import earlier batches if a later database operation fails; inspect the database and audit log before retrying. Immigration records remain subject to human review before public use.
 
 ## Production activation checklist
 
