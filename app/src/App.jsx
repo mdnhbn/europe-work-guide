@@ -296,21 +296,22 @@ function CountriesPanel({ profile }) {
   const [countryLoading, setCountryLoading] = useState({});
   const [countryErrors, setCountryErrors] = useState({});
   const nationality = profile.nationality?.trim() || 'Bangladesh';
+  const residence = profile.current_residence_country?.trim() || 'Bangladesh';
   useEffect(() => {
     let active = true;
     (async () => {
       setLoading(true); setError('');
       const [countryResult, accessResult] = await Promise.all([
         supabase.from('countries').select('code,name,languages,enabled').eq('enabled', true),
-        supabase.from('country_access').select('*').eq('nationality', nationality).eq('review_status', 'verified'),
+        supabase.from('country_access').select('*').in('nationality', [nationality, 'ANY']).eq('review_status', 'verified'),
       ]);
       if (!active) return;
       if (countryResult.error || accessResult.error) setError('দেশের তালিকা লোড করা যায়নি। পরে আবার চেষ্টা করুন।');
-      else { setCountries(countryResult.data || []); setAccessRows(accessResult.data || []); }
+      else { setCountries(countryResult.data || []); setAccessRows((accessResult.data || []).filter((row) => !row.residence_country || row.residence_country === 'ANY' || row.residence_country === residence).sort((a, b) => Number(a.residence_country === residence) - Number(b.residence_country === residence))); }
       setLoading(false);
     })();
     return () => { active = false; };
-  }, [nationality]);
+  }, [nationality, residence]);
   const accessByCode = useMemo(() => Object.fromEntries(accessRows.map((row) => [row.country_code, row])), [accessRows]);
   const sorted = useMemo(() => [...countries].sort((a, b) => {
     const statusA = accessByCode[a.code]?.access_status || 'unknown';
@@ -328,7 +329,7 @@ function CountriesPanel({ profile }) {
       supabase.from('jobs').select('*').eq('country_code', country.code).eq('review_status', 'verified').eq('active', true).order('posted_at', { ascending: false }),
     ]);
     if (routeResult.error || jobResult.error) setCountryErrors((current) => ({ ...current, [country.code]: 'এই দেশের তথ্য লোড করা যায়নি। পরে আবার চেষ্টা করুন।' }));
-    else setCountryData((current) => ({ ...current, [country.code]: { routes: routeResult.data || [], jobs: jobResult.data || [] } }));
+    else setCountryData((current) => ({ ...current, [country.code]: { routes: (routeResult.data || []).filter((route) => (!route.nationality || route.nationality === 'ANY' || route.nationality === nationality) && (!route.residence_country || route.residence_country === 'ANY' || route.residence_country === residence)), jobs: jobResult.data || [] } }));
     setCountryLoading((current) => ({ ...current, [country.code]: false }));
   };
   return <section className="panel countries-panel"><div className="panel-heading"><div><p className="eyebrow">দেশ ও সুযোগ</p><h2>দেশ ও চাকরি</h2></div><span className="nationality-pill">জাতীয়তা: {nationality}</span></div><p className="muted">অবস্থা কেবল যাচাইকৃত তথ্য থেকে দেখানো হয়। দেশ খুলে রুটের শর্ত, ফি, নথি ও সরকারি লিংক দেখুন।</p><ErrorMessage>{error}</ErrorMessage>
