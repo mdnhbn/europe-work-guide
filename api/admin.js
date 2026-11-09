@@ -528,7 +528,7 @@ module.exports = async function adminApi(req, res) {
     return res.status(200).json(saved);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected admin error";
-    const status = message.includes("Provide an ad") || message.includes("Invalid ad") || message.includes("Each ad") || message.includes("Ad links") ? 400 : 500;
+    const status = /Provide an ad|Invalid ad|Each ad|Ad links|Source config must|Country code, name|Provide 1 to 100|Each source must|Source type and check interval/i.test(message) ? 400 : 500;
     return sendError(res, status, message);
   }
 };
