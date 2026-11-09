@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { matchRoute } from '../src/lib/matching.js';
+import { isApplicableToProfile, matchRoute } from '../src/lib/matching.js';
 
 test('returns no checks when a route has no declared requirements', () => {
   assert.deepEqual(matchRoute({}, { requirements: {} }), []);
@@ -32,4 +32,16 @@ test('matches occupation without claiming visa approval', () => {
   const checks = matchRoute({ desired_occupations: ['Cook'] }, { requirements: { occupations: ['Cook', 'Chef'] } });
   assert.equal(checks[0].status, 'pass');
   assert.match(checks[0].detail, /পেশা/);
+});
+
+test('matches generic routes and exact nationality/residence combinations only', () => {
+  const profile = { nationality: 'Bangladesh', current_residence_country: 'Saudi Arabia' };
+  assert.equal(isApplicableToProfile(profile, { nationality: 'ANY', residence_country: 'ANY' }), true);
+  assert.equal(isApplicableToProfile(profile, { nationality: 'Bangladesh', residence_country: 'Saudi Arabia' }), true);
+  assert.equal(isApplicableToProfile(profile, { nationality: 'Bangladesh', residence_country: 'Switzerland' }), false);
+  assert.equal(isApplicableToProfile(profile, { nationality: 'India', residence_country: 'Saudi Arabia' }), false);
+});
+
+test('treats missing scope fields as generic for backward compatibility', () => {
+  assert.equal(isApplicableToProfile({ nationality: 'Bangladesh', current_residence_country: 'Bangladesh' }, {}), true);
 });
