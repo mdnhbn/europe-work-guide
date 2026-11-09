@@ -146,7 +146,7 @@ git push
 
 ## 4. Configure the admin panel
 
-The signed-in account is shown the admin tab only when its Supabase Auth email appears in `ADMIN_EMAILS`. The API checks that allowlist on the server for every request. The admin API adds no tables or RLS policies. Admins can manage countries, country access, visa routes, jobs, and advertisements. Ads are committed to `app/public/ads.json`; when Vercel is connected to the GitHub repository, the new ad appears after that commit deploys.
+The signed-in account is shown the admin tab only when its Supabase Auth email appears in `ADMIN_EMAILS`. The API checks that allowlist on the server for every request. Every admin operation except the allowlist check also requires a server-validated access token with `aal2` and a TOTP `amr` method. The admin tab guides an allowlisted admin through authenticator enrollment or a TOTP challenge before loading admin data. Admins can manage countries, country access, visa routes, jobs, and advertisements. Ads are committed to `app/public/ads.json`; when Vercel is connected to the GitHub repository, the new ad appears after that commit deploys.
 
 In Vercel **Settings → Environment Variables**, add these server-only values for the environments where you will use the admin panel:
 
@@ -155,6 +155,7 @@ In Vercel **Settings → Environment Variables**, add these server-only values f
 - `SUPABASE_SERVICE_KEY` = your Supabase service-role/secret key
 - `ADMIN_EMAILS` = comma-separated Supabase Auth email addresses allowed to administer the app
 - `GITHUB_TOKEN` = a fine-grained GitHub token restricted to this repository with **Contents: Read and write** access
+- `BACKUP_ENCRYPTION_KEY` = a server-only 32-byte random key (64 hex characters or base64) for encrypted backup operations
 - `GITHUB_REPOSITORY` = `mdnhbn/europe-work-guide`
 - `GITHUB_BRANCH` = `main`
 
