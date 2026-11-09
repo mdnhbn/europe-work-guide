@@ -288,3 +288,9 @@ input::placeholder { color: #a0aea8; }
   .cover-letter-paper pre{font-size:11pt;line-height:1.65}
   @page{size:A4;margin:18mm}
 }
+
+.legal-sections{display:grid;gap:12px;margin-top:22px}
+.legal-sections details{border:1px solid var(--line);border-radius:13px;background:#fff;padding:0 17px}
+.legal-sections summary{cursor:pointer;font-weight:700;padding:16px 0;color:var(--ink)}
+.legal-sections details>div{padding:0 0 14px}
+.legal-sections details p{font-size:13px;line-height:1.9;color:#52645e;margin:8px 0}
