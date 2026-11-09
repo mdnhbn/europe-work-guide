@@ -10,6 +10,7 @@ import CoverLetterPanel from './CoverLetterPanel.jsx';
 import LegalPanel from './LegalPanel.jsx';
 import AdminDashboard from './AdminDashboard.jsx';
 import AdminMaintenance from './AdminMaintenance.jsx';
+import AdminTwoFactor from './AdminTwoFactor.jsx';
 import SourceManager from './SourceManager.jsx';
 import AdSettingsPanel from './AdSettingsPanel.jsx';
 
@@ -660,7 +661,7 @@ export default function App() {
       {selectedTab === 'cv' && <CvPanel profile={profile} countries={countries} />}
       {selectedTab === 'cover' && <CoverLetterPanel profile={profile} countries={countries} />}
       {selectedTab === 'legal' && <LegalPanel profile={profile} user={user} />}
-      {selectedTab === 'admin' && isAdmin && <AdminPanel />}
+      {selectedTab === 'admin' && isAdmin && <AdminTwoFactor><AdminPanel /></AdminTwoFactor>}
     </>}</main>}
     <Notice /><footer className="site-footer">সরকারি তথ্যের লিংক খুলে নিয়ম ও আবেদন পদ্ধতি নিজে যাচাই করুন।</footer>
   </div>;
