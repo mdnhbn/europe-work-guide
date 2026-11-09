@@ -8,12 +8,12 @@ const TABLES = {
     conflict: "code",
   },
   country_access: {
-    fields: ["id", "country_code", "nationality", "access_status", "quota_included", "restrictions", "apply_where", "documents_note", "official_url", "review_status", "last_verified"],
+    fields: ["id", "country_code", "nationality", "residence_country", "access_status", "quota_included", "restrictions", "apply_where", "documents_note", "official_url", "review_status", "last_verified"],
     order: "country_code.asc",
-    conflict: "country_code,nationality",
+    conflict: "country_code,nationality,residence_country",
   },
   visa_routes: {
-    fields: ["id", "country_code", "route_type", "title", "summary", "requirements", "documents", "fees", "steps", "official_url", "review_status", "last_verified"],
+    fields: ["id", "country_code", "nationality", "residence_country", "route_type", "title", "summary", "requirements", "documents", "fees", "steps", "official_url", "review_status", "last_verified"],
     order: "country_code.asc,title.asc",
   },
   jobs: {
