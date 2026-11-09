@@ -11,6 +11,7 @@ import LegalPanel from './LegalPanel.jsx';
 import AdminDashboard from './AdminDashboard.jsx';
 import AdminMaintenance from './AdminMaintenance.jsx';
 import SourceManager from './SourceManager.jsx';
+import AdSettingsPanel from './AdSettingsPanel.jsx';
 
 const EMPTY_PROFILE = {
   full_name: '', contact_email: '', phone: '', address: '', birth_date: '', nationality: 'Bangladesh', current_residence_country: 'Bangladesh', target_countries: [], education: [], experience: [],
@@ -477,19 +478,37 @@ function rowTitle(resource, row) {
   if (resource === "country_access") return `${row.country_code} · ${row.nationality}`;
   return row.title || row.name || row.id;
 }
-function AdBanner() {
+function AdBanner({ selectedTab }) {
   const [ads, setAds] = useState([]);
+  const [settings, setSettings] = useState({ ads_enabled: false, banner_interval_minutes: 5, disable_on_legal_warnings: false });
+  const [display, setDisplay] = useState(false);
   useEffect(() => {
     let active = true;
-    fetch("/ads.json", { cache: "no-store" }).then((response) => response.ok ? response.json() : []).then((rows) => {
-      if (active && Array.isArray(rows)) setAds(rows);
-    }).catch(() => { if (active) setAds([]); });
+    Promise.all([
+      fetch("/ads.json", { cache: "no-store" }).then((response) => response.ok ? response.json() : []),
+      fetch("/ads-config.json", { cache: "no-store" }).then((response) => response.ok ? response.json() : null),
+    ]).then(([rows, config]) => {
+      if (!active) return;
+      setAds(Array.isArray(rows) ? rows : []);
+      if (config && typeof config === 'object') setSettings((current) => ({ ...current, ...config }));
+    }).catch(() => { if (active) { setAds([]); setSettings((current) => ({ ...current, ads_enabled: false })); } });
     return () => { active = false; };
   }, []);
   const today = new Date().toISOString().slice(0, 10);
+  const legalTabs = ['countries', 'compare', 'jobs', 'cv', 'cover', 'legal'];
+  const allowed = settings.ads_enabled && !(settings.disable_on_legal_warnings && legalTabs.includes(selectedTab));
   const visibleAds = ads.filter((ad) => ad.active && (!ad.start_date || ad.start_date <= today) && (!ad.end_date || ad.end_date >= today));
-  if (!visibleAds.length) return null;
-  return <section className="ads-banner" aria-label="বিজ্ঞাপন"><div className="ads-heading"><h2>আপনার জন্য</h2><span>বিজ্ঞাপন</span></div><div className="ads-grid">{visibleAds.map((ad) => <article className="ad-card" key={ad.id}>{ad.image_url && <img src={ad.image_url} alt="" loading="lazy" />}<div><span className="ad-label">স্পনসরকৃত</span><h3>{ad.title}</h3><p>{ad.body}</p>{/^https?:\/\//i.test(ad.href || "") && <a href={ad.href} target="_blank" rel="noreferrer">আরও জানুন ↗</a>}</div></article>)}</div></section>;
+  useEffect(() => {
+    if (!allowed || !visibleAds.length) { setDisplay(false); return; }
+    let last = 0;
+    try { last = Number(window.localStorage.getItem('europe-work-guide:last-banner-shown') || 0); } catch {}
+    const interval = Math.max(1, Number(settings.banner_interval_minutes) || 5) * 60 * 1000;
+    if (Date.now() - last < interval) { setDisplay(false); return; }
+    try { window.localStorage.setItem('europe-work-guide:last-banner-shown', String(Date.now())); } catch {}
+    setDisplay(true);
+  }, [allowed, ads, settings.banner_interval_minutes, visibleAds.length]);
+  if (!display || !visibleAds.length) return null;
+  return <section className="ads-banner" aria-label="বিজ্ঞাপন"><div className="ads-heading"><h2>আপনার জন্য</h2><span>বিজ্ঞাপন</span></div><div className="ads-grid">{visibleAds.map((ad) => <article className="ad-card" key={ad.id}>{ad.image_url && <img src={ad.image_url} alt="" loading="lazy" />}<div><span className="ad-label">স্পনসরকৃত</span><h3>{ad.title}</h3><p>{ad.body}</p>{/^https?:\\/\\//i.test(ad.href || "") && <a href={ad.href} target="_blank" rel="noreferrer">আরও জানুন ↗</a>}</div></article>)}</div></section>;
 }
 function AdminPanel() {
   const [resource, setResource] = useState("countries");
@@ -555,6 +574,7 @@ function AdminPanel() {
   return <section className="panel admin-panel"><div className="panel-heading"><div><p className="eyebrow">কনটেন্ট পরিচালনা</p><h2>অ্যাডমিন প্যানেল</h2></div><span className="privacy-pill">🔒 অনুমোদিত অ্যাডমিন</span></div><p className="muted">দেশ, প্রবেশের তথ্য, ভিসা পথ, চাকরি ও বিজ্ঞাপন যোগ বা সম্পাদনা করুন। user-দের দেখাতে status “যাচাইকৃত” করুন।</p>
     <AdminDashboard />
     <SourceManager />
+    <AdSettingsPanel />
     <AdminMaintenance />
     <div className="admin-resource-tabs">{Object.entries(ADMIN_SECTIONS).map(([key, item]) => <button key={key} className={resource === key ? "active" : ""} onClick={() => setResource(key)}>{item.label}</button>)}</div>
     <form className="admin-form" onSubmit={save}><div className="section-heading"><h3>{editingKey ? `${section.label} সম্পাদনা` : `নতুন ${section.label} যোগ করুন`}</h3>{editingKey && <button type="button" className="button button-light small" onClick={() => { setEditingKey(null); setForm(freshAdminForm(section)); }}>বাতিল</button>}</div>
@@ -632,7 +652,7 @@ export default function App() {
   const signOut = async () => { const { error } = await supabase.auth.signOut(); if (error) setProfileError('লগ আউট করা যায়নি। আবার চেষ্টা করুন।'); else setSelectedTab('profile'); };
   if (!isSupabaseConfigured) return <div className="app-shell"><Header /><main className="config-error"><span>⚙</span><h1>অ্যাপ সেটআপ অসম্পূর্ণ</h1><p><code>app/.env</code> ফাইলে <code>VITE_SUPABASE_URL</code> এবং <code>VITE_SUPABASE_ANON_KEY</code> যোগ করে আবার চালু করুন।</p></main><Notice /></div>;
   return <div className="app-shell"><Header user={user} onSignOut={signOut} />
-    {authLoading ? <main className="loading-state">অ্যাকাউন্ট যাচাই হচ্ছে…</main> : !user ? <AuthPanel /> : <main className="workspace"><TabNav selected={selectedTab} onSelect={setSelectedTab} isAdmin={isAdmin} /><AdBanner />{profileError && <div className="page-error"><ErrorMessage>{profileError}</ErrorMessage></div>}{profileLoading ? <div className="loading-state panel">প্রোফাইল লোড হচ্ছে…</div> : <>
+    {authLoading ? <main className="loading-state">অ্যাকাউন্ট যাচাই হচ্ছে…</main> : !user ? <AuthPanel /> : <main className="workspace"><TabNav selected={selectedTab} onSelect={setSelectedTab} isAdmin={isAdmin} /><AdBanner selectedTab={selectedTab} />{profileError && <div className="page-error"><ErrorMessage>{profileError}</ErrorMessage></div>}{profileLoading ? <div className="loading-state panel">প্রোফাইল লোড হচ্ছে…</div> : <>
       {selectedTab === 'profile' && <ProfileForm key={user.id} profile={profile} userId={user.id} onSaved={setProfile} countries={countries} />}
       {selectedTab === 'countries' && <CountriesPanel profile={profile} />}
       {selectedTab === 'compare' && <ComparisonPanel countries={countries} profile={profile} />}
