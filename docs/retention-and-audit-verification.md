@@ -13,8 +13,8 @@ There is no scheduled purge. The operator must first decide the lawful purpose, 
 ## Audit migration checks
 
 1. Apply `database/migrations/20261109_admin_backup_audit.sql` in the intended Supabase project.
-2. Run the read-only query in `database/verify_admin_audit.sql`. Expect `table_exists`, `row_level_security_enabled`, `append_only_trigger_enabled`, `service_role_can_read`, `service_role_can_insert`, and `browser_roles_cannot_write` to be true.
+2. Run the read-only query in `database/verify_admin_audit.sql`. Expect `table_exists`, `row_level_security_enabled`, `append_only_trigger_enabled`, `truncate_trigger_enabled`, `service_role_can_read`, `service_role_can_insert`, `service_role_cannot_change_existing_events`, and `browser_roles_cannot_access` to be true.
 3. Configure `SUPABASE_SERVICE_KEY` and `ADMIN_EMAILS` server-side, merge/deploy the admin MFA change, enroll an allowlisted test admin in TOTP, then read `GET /api/admin?resource=admin_audit_log`.
-4. In a non-production Supabase project, perform a known admin action and confirm its audit event is present. Confirm direct UPDATE/DELETE attempts are rejected by the append-only trigger. Do not use production for mutation probes.
+4. In a non-production Supabase project, perform a known admin mutation and confirm its `*_requested` and completion events appear in the log. Confirm that direct `UPDATE`, `DELETE`, and `TRUNCATE` are blocked. Run destructive probes only against an isolated test database.
 
-The status query checks database structure and grants only. It does not prove that a live API mutation created an audit row. The current admin API logs audit-write failures and may still complete the underlying mutation; end-to-end audit enforcement remains a follow-up before relying on the log for compliance.
+The admin API returns HTTP 503 before a mutation if it cannot write its `*_requested` event. It also requires an audit entry before returning an encrypted backup. The request event records an attempt. A completion event is written separately after a successful downstream response. If that audit write fails, the API logs the failure and returns the mutation's actual result. Check the downstream system when an attempt has no completion event. The schema query does not exercise the live API.

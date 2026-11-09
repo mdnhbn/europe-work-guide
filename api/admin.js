@@ -156,7 +156,7 @@ async function fetchAllRows(table) {
 
 async function insertAudit(user, action, entity, beforeValue = null, afterValue = null) {
   const base = supabaseBase();
-  if (!base || !env("SUPABASE_SERVICE_KEY")) return;
+  if (!base || !env("SUPABASE_SERVICE_KEY")) return false;
   try {
     const response = await fetch(`${base}/rest/v1/admin_audit_log`, {
       method: "POST",
@@ -171,9 +171,19 @@ async function insertAudit(user, action, entity, beforeValue = null, afterValue 
         created_at: new Date().toISOString(),
       }),
     });
-    if (!response.ok) console.error("Admin audit write failed; apply database/migrations/20261109_admin_backup_audit.sql");
+    if (response.ok) return true;
+    console.error(`Admin audit write failed (${response.status}) for ${action}`);
   } catch {
-    console.error("Admin audit write failed; audit migration may be missing");
+    console.error(`Admin audit request failed for ${action}`);
+  }
+  return false;
+}
+
+class AuditUnavailableError extends Error {}
+
+async function requireAudit(user, action, entity, details = null) {
+  if (!await insertAudit(user, action, entity, null, details)) {
+    throw new AuditUnavailableError("Admin audit log is unavailable. The operation was not attempted. Check the audit migration and service key.");
   }
 }
 
@@ -361,6 +371,7 @@ module.exports = async function adminApi(req, res) {
         popunder_interval_minutes: 30,
         popunder_max_per_session: 0,
       };
+      await requireAudit(user, "ad_settings_update_requested", "ad-settings");
       const response = await githubApi("contents/app/public/ads-config.json", {
         method: "PUT",
         body: JSON.stringify({
@@ -382,7 +393,9 @@ module.exports = async function adminApi(req, res) {
       const current = await readAds();
       const next = current.ads.filter((item) => String(item.id) !== id);
       if (next.length === current.ads.length) return sendError(res, 404, "Advertisement not found");
+      await requireAudit(user, "ads_delete_requested", "ads", { id });
       const result = await saveAds(next);
+      await insertAudit(user, "ads_delete", "ads", null, { id, commit: result.commit });
       return res.status(200).json({ deleted: true, id, commit: result.commit });
     }
 
@@ -406,6 +419,7 @@ module.exports = async function adminApi(req, res) {
         branch,
         ...(existing ? { sha: existing.sha } : {}),
       };
+      await requireAudit(user, "source_config_update_requested", config.code);
       const response = await githubApi(path, { method: "PUT", body: JSON.stringify(body) });
       if (!response.ok) return sendError(res, 502, "Could not save source config; check GitHub Contents permission");
       const result = await response.json();
@@ -422,6 +436,7 @@ module.exports = async function adminApi(req, res) {
 
     if (resource === "scraper-run" && req.method === "POST") {
       const branch = env("GITHUB_BRANCH") || "main";
+      await requireAudit(user, "scraper_manual_run_requested", "scrape.yml", { branch });
       const response = await githubApi("actions/workflows/scrape.yml/dispatches", { method: "POST", body: JSON.stringify({ ref: branch }) });
       if (response.status === 204) {
         await insertAudit(user, "scraper_manual_run", "scrape.yml", null, { branch });
@@ -447,7 +462,7 @@ module.exports = async function adminApi(req, res) {
           note: "This backup contains personal profile data and is encrypted. Store it securely.",
         };
         const backup = encryptBackup(payload);
-        await insertAudit(user, "backup_export", "full_backup", null, { counts: payload.counts, encrypted: true });
+        await requireAudit(user, "backup_export", "full_backup", { counts: payload.counts, encrypted: true });
         return res.status(200).json(backup);
       }
       if (action === "preview" || action === "restore") {
@@ -475,6 +490,7 @@ module.exports = async function adminApi(req, res) {
         if (mode === "empty_database_restore" && Object.values(current).some((rows) => rows.length > 0)) {
           return sendError(res, 409, "Full restore is allowed only when all supported database tables are empty. No data was changed.");
         }
+        await requireAudit(user, "backup_restore_requested", "full_backup", { mode, counts });
         let restored = 0;
         for (const item of BACKUP_TABLES) {
           const rows = payload.tables[item.name];
@@ -510,7 +526,9 @@ module.exports = async function adminApi(req, res) {
       }
       if (req.method !== "POST") return sendError(res, 405, "Method not allowed for ads");
       if (!req.body || !Array.isArray(req.body.ads)) return sendError(res, 400, "Invalid advertisement data");
-      const result = await saveAds(req.body.ads);
+      const ads = normalizeAds(req.body.ads);
+      await requireAudit(user, "ads_update_requested", "ads", { count: ads.length });
+      const result = await saveAds(ads);
       await insertAudit(user, "ads_update", "ads", null, { count: result.ads.length, commit: result.commit });
       return res.status(200).json(result);
     }
@@ -522,6 +540,7 @@ module.exports = async function adminApi(req, res) {
       const id = String(input.id || "").trim();
       if (!id || id.length > 160) return sendError(res, 400, "A valid record id is required");
       const deleteUrl = `${supabaseBase()}/rest/v1/${resource}?id=eq.${encodeURIComponent(id)}`;
+      await requireAudit(user, "delete_requested", resource, { id });
       const deleted = await fetch(deleteUrl, { method: "DELETE", headers: serviceHeaders("return=representation") });
       if (!deleted.ok) return sendError(res, 502, "Could not delete the record");
       const rows = await deleted.json().catch(() => []);
@@ -587,6 +606,8 @@ module.exports = async function adminApi(req, res) {
       method = "PATCH";
       prefer = "return=representation";
     }
+    const action = method === "PATCH" ? "update" : "create_or_upsert";
+    await requireAudit(user, `${action}_requested`, resource, { id: input.id || input.code || null });
     const response = await fetch(requestUrl, {
       method,
       headers: serviceHeaders(prefer),
@@ -595,9 +616,10 @@ module.exports = async function adminApi(req, res) {
     if (!response.ok) return sendError(res, 502, "Could not save admin data");
     const rows = await response.json();
     const saved = Array.isArray(rows) ? rows[0] || null : rows;
-    await insertAudit(user, method === "PATCH" ? "update" : "create_or_upsert", resource, null, saved);
+    await insertAudit(user, action, resource, null, saved);
     return res.status(200).json(saved);
   } catch (error) {
+    if (error instanceof AuditUnavailableError) return sendError(res, 503, error.message);
     const message = error instanceof Error ? error.message : "Unexpected admin error";
     const status = /Provide an ad|Invalid ad|Each ad|Ad links|Source config must|Country code, name|Provide 1 to 100|Each source must|Source type and check interval/i.test(message) ? 400 : 500;
     return sendError(res, status, message);

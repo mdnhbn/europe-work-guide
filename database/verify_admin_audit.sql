@@ -10,27 +10,22 @@ SELECT
     WHERE tgrelid = target.relation_oid
       AND tgname = 'admin_audit_log_no_update'
       AND NOT tgisinternal
-      AND tgenabled <> 'D'
+      AND tgenabled IN ('O', 'A')
   ) AS append_only_trigger_enabled,
   EXISTS (
-    SELECT 1 FROM information_schema.table_privileges
-    WHERE table_schema = 'public'
-      AND table_name = 'admin_audit_log'
-      AND grantee = 'service_role'
-      AND privilege_type = 'SELECT'
-  ) AS service_role_can_read,
-  EXISTS (
-    SELECT 1 FROM information_schema.table_privileges
-    WHERE table_schema = 'public'
-      AND table_name = 'admin_audit_log'
-      AND grantee = 'service_role'
-      AND privilege_type = 'INSERT'
-  ) AS service_role_can_insert,
-  NOT EXISTS (
-    SELECT 1 FROM information_schema.table_privileges
-    WHERE table_schema = 'public'
-      AND table_name = 'admin_audit_log'
-      AND grantee IN ('PUBLIC', 'anon', 'authenticated')
-      AND privilege_type IN ('INSERT', 'UPDATE', 'DELETE')
-  ) AS browser_roles_cannot_write
+    SELECT 1 FROM pg_trigger
+    WHERE tgrelid = target.relation_oid
+      AND tgname = 'admin_audit_log_no_truncate'
+      AND NOT tgisinternal
+      AND tgenabled IN ('O', 'A')
+  ) AS truncate_trigger_enabled,
+  COALESCE(has_table_privilege('service_role', relation_oid::oid, 'SELECT'), false) AS service_role_can_read,
+  COALESCE(has_table_privilege('service_role', relation_oid::oid, 'INSERT'), false) AS service_role_can_insert,
+  COALESCE(NOT has_table_privilege('service_role', relation_oid::oid, 'UPDATE,DELETE,TRUNCATE'), false)
+    AS service_role_cannot_change_existing_events,
+  COALESCE(
+    NOT has_table_privilege('anon', relation_oid::oid, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
+      AND NOT has_table_privilege('authenticated', relation_oid::oid, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE'),
+    false
+  ) AS browser_roles_cannot_access
 FROM target;
