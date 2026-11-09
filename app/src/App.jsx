@@ -214,6 +214,7 @@ function ProfileForm({ profile, userId, onSaved, countries = [] }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [warning, setWarning] = useState('');
   useEffect(() => setForm(profile), [profile]);
   const setValue = (key, value) => { setForm((current) => ({ ...current, [key]: value })); setSaved(false); };
   const updateList = (key, value) => { setValue(key, value); };
@@ -228,7 +229,7 @@ function ProfileForm({ profile, userId, onSaved, countries = [] }) {
   ];
   const completeness = Math.round(completenessValues.filter((value) => Array.isArray(value) ? value.length > 0 : typeof value === 'string' ? value.trim().length > 0 : Boolean(value)).length / completenessValues.length * 100);
   const submit = async (event) => {
-    event.preventDefault(); setBusy(true); setError(''); setSaved(false);
+    event.preventDefault(); setBusy(true); setError(''); setWarning(''); setSaved(false);
     const payload = {
       user_id: userId,
       full_name: (form.full_name || "").trim(),
@@ -247,7 +248,15 @@ function ProfileForm({ profile, userId, onSaved, countries = [] }) {
       updated_at: new Date().toISOString(),
     };
     try {
-      const { error: saveError } = await supabase.from('profiles').upsert(payload, { onConflict: 'user_id' });
+      let { error: saveError } = await supabase.from('profiles').upsert(payload, { onConflict: 'user_id' });
+      if (saveError && ['PGRST204', '42703'].includes(saveError.code)) {
+        const legacyPayload = { ...payload };
+        delete legacyPayload.current_residence_country;
+        delete legacyPayload.target_countries;
+        const fallback = await supabase.from('profiles').upsert(legacyPayload, { onConflict: 'user_id' });
+        saveError = fallback.error;
+        if (!saveError) setWarning('মূল প্রোফাইল সংরক্ষিত হয়েছে। বর্তমান বসবাসের দেশ ও পছন্দের দেশ সংরক্ষণ করতে Supabase-এ database/migrations/20261109_residence_aware_matching.sql প্রয়োগ করতে হবে।');
+      }
       if (saveError) throw saveError;
       setForm((current) => ({ ...current, ...payload })); setSaved(true); onSaved(payload);
     } catch { setError('প্রোফাইল সংরক্ষণ করা যায়নি। সংযোগ বা অনুমতি যাচাই করে আবার চেষ্টা করুন।'); }
@@ -260,7 +269,7 @@ function ProfileForm({ profile, userId, onSaved, countries = [] }) {
     <RepeatableList title="কাজের অভিজ্ঞতা" entries={form.experience || []} onChange={(v) => updateList('experience', v)} emptyEntry={{ title: '', employer: '', country: '', years: '', description: '' }} fields={[{ name: 'title', label: 'পদ / কাজ' }, { name: 'employer', label: 'প্রতিষ্ঠান' }, { name: 'country', label: 'দেশ' }, { name: 'years', label: 'বছর', type: 'number' }, { name: 'description', label: 'কাজের বিবরণ' }]} />
     <RepeatableList title="ভাষা" entries={form.languages || []} onChange={(v) => updateList('languages', v)} emptyEntry={{ name: '', level: '' }} fields={[{ name: 'name', label: 'ভাষা' }]} />
     {(form.languages || []).length > 0 && <div className="language-level-list">{form.languages.map((item, index) => <Field key={index} label={`${item.name || `ভাষা ${index + 1}`} — স্তর`}><select value={item.level || ''} onChange={(e) => updateList('languages', form.languages.map((entry, i) => i === index ? { ...entry, level: e.target.value } : entry))}><option value="">স্তর নির্বাচন করুন</option>{['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'Native'].map((level) => <option key={level} value={level}>{level === 'Native' ? 'মাতৃভাষা / Native' : level}</option>)}</select></Field>)}</div>}
-    <ErrorMessage>{error}</ErrorMessage>{saved && <p className="message success">প্রোফাইল সংরক্ষণ হয়েছে।</p>}<div className="form-actions"><button className="button button-primary" disabled={busy}>{busy ? 'সংরক্ষণ হচ্ছে…' : 'প্রোফাইল সংরক্ষণ করুন'}</button></div>
+    <ErrorMessage>{error}</ErrorMessage>{saved && <p className="message success">প্রোফাইল সংরক্ষণ হয়েছে।</p>}{warning && <p className="message error" role="status">{warning}</p>}<div className="form-actions"><button className="button button-primary" disabled={busy}>{busy ? 'সংরক্ষণ হচ্ছে…' : 'প্রোফাইল সংরক্ষণ করুন'}</button></div>
   </form>;
 }
 function CheckList({ checks }) {
@@ -590,8 +599,6 @@ export default function App() {
           address: '',
           birth_date: null,
           nationality: 'Bangladesh',
-          current_residence_country: 'Bangladesh',
-          target_countries: [],
           education: [],
           experience: [],
           skills: [],
