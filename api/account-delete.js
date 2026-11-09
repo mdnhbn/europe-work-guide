@@ -1,3 +1,5 @@
+const { supabaseServiceAuthHeaders } = require("../server/supabase-service");
+
 const SUPABASE_URL = () => (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 function fail(res, status, error) { return res.status(status).json({ error }); }
 
@@ -20,7 +22,7 @@ module.exports = async function accountDelete(req, res) {
     // The profiles.user_id foreign key cascades on Auth user deletion.
     const deletion = await fetch(`${base}/auth/v1/admin/users/${encodeURIComponent(user.id)}`, {
       method: "DELETE",
-      headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+      headers: supabaseServiceAuthHeaders(serviceKey),
     });
     if (!deletion.ok) return fail(res, 502, "The account could not be deleted.");
     return res.status(200).json({ deleted: true, message: "Account deletion request completed." });

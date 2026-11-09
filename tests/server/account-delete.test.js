@@ -84,3 +84,15 @@ test("reports an Auth deletion failure without writing to profiles", async () =>
   assert.equal(calls.length, 2);
   assert.equal(calls.some((url) => url.includes('/rest/')), false);
 });
+
+test("sends a Supabase secret key only in the API key header", async () => {
+  process.env.SUPABASE_SERVICE_KEY = "sb_secret_test_only";
+  const calls = [];
+  const queued = [response(200, { id: "user-1" }), response(204)];
+  global.fetch = async (url, options) => { calls.push(options); return queued.shift(); };
+
+  const result = await invoke(deletionRequest());
+  assert.equal(result.statusCode, 200);
+  assert.equal(calls[0].headers.Authorization, "Bearer user-token");
+  assert.deepEqual(calls[1].headers, { apikey: "sb_secret_test_only" });
+});

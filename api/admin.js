@@ -1,3 +1,4 @@
+const { supabaseServiceAuthHeaders } = require("../server/supabase-service");
 const { randomUUID, createCipheriv, createDecipheriv, randomBytes } = require("crypto");
 const { gzipSync, gunzipSync } = require("zlib");
 const { hasAal2TotpSession } = require("../server/admin-auth");
@@ -59,8 +60,7 @@ async function authorizeAdmin(req) {
 function serviceHeaders(prefer) {
   const key = env("SUPABASE_SERVICE_KEY");
   return {
-    apikey: key,
-    Authorization: `Bearer ${key}`,
+    ...supabaseServiceAuthHeaders(key),
     "Content-Type": "application/json",
     ...(prefer ? { Prefer: prefer } : {}),
   };
