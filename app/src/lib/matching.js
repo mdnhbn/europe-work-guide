@@ -1,3 +1,14 @@
+export function isApplicableToProfile(profile, record) {
+  const normalize = (value) => typeof value === 'string' ? value.trim().toLocaleLowerCase() : '';
+  const wantedNationality = normalize(profile?.nationality);
+  const wantedResidence = normalize(profile?.current_residence_country);
+  const recordNationality = normalize(record?.nationality);
+  const recordResidence = normalize(record?.residence_country);
+  const nationalityMatches = !recordNationality || recordNationality === 'any' || recordNationality === wantedNationality;
+  const residenceMatches = !recordResidence || recordResidence === 'any' || recordResidence === wantedResidence;
+  return nationalityMatches && residenceMatches;
+}
+
 const LANGUAGE_ORDER = { A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, C2: 6, NATIVE: 7 };
 
 function ageOnDate(birthDate, today = new Date()) {
