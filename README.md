@@ -12,7 +12,7 @@ The production UI now includes:
 
 The latest production commit also passed the Vercel production build. Automated GitHub Actions status should be checked under the repository's Actions tab; the connector did not return a workflow-run record during this update.
 
-The privacy/terms content is a first-release draft and must be completed with the operator's legal identity and support contact before treating it as final. Profile JSON export is implemented; full account deletion, automated data retention/deletion, and encrypted restore workflow still need implementation.
+The privacy/terms content is a first-release draft and must be completed with the operator's legal identity and support contact before treating it as final. Profile JSON export and a self-service account deletion endpoint are implemented, but deletion must be tested against the live Supabase project and the server-only service key must be configured. Automated retention/deletion is still not implemented.
 
 ## Latest implementation update
 
@@ -24,13 +24,17 @@ These changes extend the existing Supabase/Vercel app rather than replacing its 
 
 ## Admin source registry and job matching
 
-The admin panel can edit country source-registry JSON files in `scrapers/countries/`, inspect recent `source_pages` fetch metadata, and request a manual scraper run through GitHub Actions. The token used for source editing needs repository Contents read/write; manual run also needs Actions: write. Source URLs must use HTTPS. This registry currently covers only configured country files; a working connector must still be implemented for each source type.
+The admin panel can edit country source-registry JSON files in `scrapers/countries/`, inspect recent `source_pages` fetch metadata, request a manual scraper run through GitHub Actions, and control the global banner switch/frequency. The token used for source editing needs repository Contents read/write; manual run also needs Actions: write. Banner ads use localStorage frequency control. Pop-under and arbitrary third-party script injection intentionally remain disabled. Source URLs must use HTTPS. This registry currently covers only configured country files; a working connector must still be implemented for each source type.
 
 Verified job cards now show an explainable heuristic profile-match score based on exact preferred-occupation matches, skill words appearing in the job text, target-country preference, and experience wording. This is not an AI hiring prediction or a visa eligibility assessment. Because the current database/job connector does not yet supply structured required skills, salary, language levels, deadlines, or employment types for every job, those fields are not fabricated.
 
 ## Current-residence-aware matching
 
 The profile now includes current country of residence and target countries. The country access and visa-route admin forms can scope records to a nationality/residence combination; `ANY` means the reviewed record is general rather than residence-specific. Apply `database/migrations/20261109_residence_aware_matching.sql` in the Supabase SQL Editor before deploying this profile change. Existing access records receive `ANY` so they remain generic rather than being incorrectly treated as verified for one residence. Existing routes are also tagged `ANY` by default. Do not claim a residence-specific route is verified until a reviewer checks the official source for that exact combination.
+
+## Advertising controls
+
+`app/public/ads-config.json` stores the global ad switch, banner frequency in minutes, and an option to suppress ads on legal/immigration-warning pages. The browser tracks the last banner display in localStorage. The admin can edit these settings from the admin panel. Pop-under settings are fixed off because the current release does not implement a compliant pop-under runtime; arbitrary HTML/script execution from ad entries is not supported.
 
 ## Encrypted backup and audit log
 
