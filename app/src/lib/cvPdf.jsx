@@ -11,14 +11,16 @@ Font.register({
   ],
 });
 
+Font.registerHyphenationCallback((word) => [word]);
+
 const styles = StyleSheet.create({
   page: { fontFamily: family, fontSize: 11, lineHeight: 1.45, padding: 42, color: '#1b2924' },
   compact: { fontSize: 10, padding: 32 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 16, borderBottomWidth: 2, borderBottomColor: '#1e6048', paddingBottom: 14 },
   headerText: { flex: 1 },
   subtitle: { color: '#527064', marginBottom: 4 },
-  name: { fontSize: 23, fontWeight: 700 },
-  contact: { color: '#61726b', marginTop: 4 },
+  name: { fontSize: 23, lineHeight: 1.45, fontWeight: 700 },
+  contact: { color: '#61726b', marginTop: 6 },
   photo: { width: 70, height: 84, borderWidth: 1, borderStyle: 'dashed', borderColor: '#a8b6ae', alignItems: 'center', justifyContent: 'center' },
   photoLabel: { textAlign: 'center', color: '#527064' },
   section: { marginTop: 11, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#e5ebe7' },
@@ -46,7 +48,7 @@ function CvPdfDocument({ cv }) {
             <Text style={styles.sectionTitle} minPresenceAhead={20}>{title}</Text>
             {entries.map(({ heading, details, text }, index) => (
               <View key={index} style={styles.entry}>
-                {heading && <Text style={styles.entryHeading} minPresenceAhead={details || text ? 15 : 0}>{heading}</Text>}
+                {heading && <Text style={styles.entryHeading} minPresenceAhead={text ? 33 : details ? 15 : 0}>{heading}</Text>}
                 {details && <Text style={styles.details}>{details}</Text>}
                 {text && <Text>{text}</Text>}
               </View>
