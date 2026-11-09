@@ -149,6 +149,35 @@ module.exports = async function adminApi(req, res) {
     const resource = url.searchParams.get("resource");
     if (resource === "check" && req.method === "GET") return res.status(200).json({ admin: true, email: user.email });
 
+    if (resource === "dashboard" && req.method === "GET") {
+      const base = supabaseBase();
+      const serviceKey = env("SUPABASE_SERVICE_KEY");
+      if (!base || !serviceKey) return sendError(res, 500, "Admin database is not configured");
+      const tables = [
+        ["profiles", "user_id", "profiles"],
+        ["countries", "code", "countries"],
+        ["country_access", "id", "country_access"],
+        ["visa_routes", "id", "visa_routes"],
+        ["jobs", "id", "jobs"],
+        ["source_pages", "id", "source_pages"],
+      ];
+      const counts = {};
+      await Promise.all(tables.map(async ([table, key, label]) => {
+        try {
+          const response = await fetch(`${base}/rest/v1/${table}?select=${key}`, {
+            headers: { ...serviceHeaders("count=exact"), Range: "0-0" },
+          });
+          if (!response.ok) { counts[label] = null; return; }
+          const range = response.headers.get("content-range") || "";
+          const total = Number(range.split("/").pop());
+          counts[label] = Number.isFinite(total) ? total : null;
+        } catch {
+          counts[label] = null;
+        }
+      }));
+      return res.status(200).json({ generated_at: new Date().toISOString(), counts });
+    }
+
     if (resource === "ads") {
       if (req.method === "GET") {
         const result = await readAds();
