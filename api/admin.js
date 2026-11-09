@@ -175,6 +175,63 @@ async function insertAudit(user, action, entity, beforeValue = null, afterValue 
   }
 }
 
+
+async function githubApi(path, options = {}) {
+  const token = env("GITHUB_TOKEN");
+  const repo = env("GITHUB_REPOSITORY") || "mdnhbn/europe-work-guide";
+  if (!token || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) throw new Error("GitHub source storage is not configured");
+  const response = await fetch(`https://api.github.com/repos/${repo}/${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  return response;
+}
+
+async function readSourceConfigs() {
+  const directory = await githubApi("contents/scrapers/countries");
+  if (!directory.ok) throw new Error("Could not list scraper source configurations");
+  const entries = await directory.json();
+  if (!Array.isArray(entries)) throw new Error("Source configuration directory is invalid");
+  const files = entries.filter((item) => item.type === "file" && item.name.endsWith(".json"));
+  const configs = [];
+  for (const item of files) {
+    const response = await githubApi(`contents/scrapers/countries/${encodeURIComponent(item.name)}`);
+    if (!response.ok) throw new Error("Could not read a source configuration");
+    const file = await response.json();
+    let config;
+    try { config = JSON.parse(Buffer.from(String(file.content || "").replace(/\s/g, ""), "base64").toString("utf8")); }
+    catch { throw new Error(`Invalid JSON source configuration: ${item.name}`); }
+    configs.push({ filename: item.name, sha: file.sha, config });
+  }
+  return configs;
+}
+
+function validateSourceConfig(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Source config must be a JSON object");
+  const code = String(input.code || "").trim().toUpperCase();
+  const name = String(input.name || "").trim();
+  const language = String(input.language || "").trim().toLowerCase();
+  if (!/^[A-Z]{2,3}$/.test(code) || !name || name.length > 100 || !/^[a-z]{2,3}$/.test(language)) throw new Error("Country code, name and language are required");
+  if (!Array.isArray(input.sources) || input.sources.length < 1 || input.sources.length > 100) throw new Error("Provide 1 to 100 official source URLs");
+  const sources = input.sources.map((source) => {
+    const url = String(source?.url || "").trim();
+    let parsed;
+    try { parsed = new URL(url); } catch { throw new Error("Each source must have a valid HTTPS URL"); }
+    if (parsed.protocol !== "https:" || !parsed.hostname.includes(".")) throw new Error("Each source must use HTTPS");
+    const type = String(source.type || "").trim();
+    const days = Number(source.check_every_days);
+    if (!/^[a-zA-Z0-9_-]{2,60}$/.test(type) || !Number.isInteger(days) || days < 1 || days > 365) throw new Error("Source type and check interval are invalid");
+    return { url, type, check_every_days: days };
+  });
+  return { code, name, language, sources };
+}
+
 function validUrl(value, allowEmpty = true) {
   if (!value) return allowEmpty;
   try {
@@ -281,6 +338,50 @@ module.exports = async function adminApi(req, res) {
       if (next.length === current.ads.length) return sendError(res, 404, "Advertisement not found");
       const result = await saveAds(next);
       return res.status(200).json({ deleted: true, id, commit: result.commit });
+    }
+
+
+    if (resource === "sources" && req.method === "GET") {
+      const configs = await readSourceConfigs();
+      return res.status(200).json(configs.map(({ filename, config }) => ({ filename, ...config })));
+    }
+
+    if (resource === "sources" && req.method === "POST") {
+      const config = validateSourceConfig(req.body?.config);
+      const configs = await readSourceConfigs();
+      const existing = configs.find((item) => item.config.code === config.code);
+      const filename = existing?.filename || `${config.code.toLowerCase()}.json`;
+      const repo = env("GITHUB_REPOSITORY") || "mdnhbn/europe-work-guide";
+      const branch = env("GITHUB_BRANCH") || "main";
+      const path = `contents/scrapers/countries/${encodeURIComponent(filename)}`;
+      const body = {
+        message: `Update official scraper sources for ${config.code}`,
+        content: Buffer.from(`${JSON.stringify(config, null, 2)}\\n`, "utf8").toString("base64"),
+        branch,
+        ...(existing ? { sha: existing.sha } : {}),
+      };
+      const response = await githubApi(path, { method: "PUT", body: JSON.stringify(body) });
+      if (!response.ok) return sendError(res, 502, "Could not save source config; check GitHub Contents permission");
+      const result = await response.json();
+      await insertAudit(user, "source_config_update", config.code, existing?.config || null, config);
+      return res.status(200).json({ saved: true, filename, commit: result.commit?.sha || null, config });
+    }
+
+    if (resource === "source_pages" && req.method === "GET") {
+      if (!env("SUPABASE_SERVICE_KEY")) return sendError(res, 503, "Admin database is not configured");
+      const response = await fetch(`${supabaseBase()}/rest/v1/source_pages?select=id,country_code,url,content_hash,changed,fetched_at&order=fetched_at.desc&limit=100`, { headers: serviceHeaders() });
+      if (!response.ok) return sendError(res, 502, "Could not load source fetch history");
+      return res.status(200).json(await response.json());
+    }
+
+    if (resource === "scraper-run" && req.method === "POST") {
+      const branch = env("GITHUB_BRANCH") || "main";
+      const response = await githubApi("actions/workflows/scrape.yml/dispatches", { method: "POST", body: JSON.stringify({ ref: branch }) });
+      if (response.status === 204) {
+        await insertAudit(user, "scraper_manual_run", "scrape.yml", null, { branch });
+        return res.status(200).json({ queued: true, branch, message: "Scraper workflow was queued. Newly collected immigration data remains pending review." });
+      }
+      return sendError(res, response.status === 404 || response.status === 403 ? 403 : 502, "Could not start scraper. The GitHub token needs Actions: write permission for this repository.");
     }
 
     if (resource === "backup") {
