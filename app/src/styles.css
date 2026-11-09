@@ -366,3 +366,10 @@ input::placeholder { color: #a0aea8; }
 
 .job-match-score{display:inline-flex;align-items:center;border:1px solid #cfe6d7;background:#eff8f2;color:#226544;border-radius:999px;padding:5px 9px;font-size:10px;font-weight:700;white-space:nowrap}
 .job-match-reasons{margin:8px 0 12px;padding-left:20px;color:var(--muted);font-size:12px;line-height:1.7}
+
+.ad-settings-panel{margin-top:22px}
+.ad-setting-toggle{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.ad-setting-toggle span{display:grid;gap:4px}.ad-setting-toggle strong{font-size:13px}.ad-setting-toggle small{font-size:11px;color:var(--muted);line-height:1.6}
+.ad-setting-toggle input{width:20px;height:20px;flex-shrink:0;accent-color:var(--green)}
+.ad-setting-interval{max-width:320px;margin:16px 0}
+.ad-settings-panel .message.warning{background:#fff8e8;color:#81500a;border:1px solid #f2dfb3;border-radius:10px;padding:12px;font-size:12px;line-height:1.6}
