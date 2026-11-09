@@ -1,5 +1,6 @@
 const { randomUUID, createCipheriv, createDecipheriv, randomBytes } = require("crypto");
 const { gzipSync, gunzipSync } = require("zlib");
+const { hasAal2TotpSession } = require("./admin-auth");
 
 const TABLES = {
   countries: {
@@ -299,7 +300,8 @@ module.exports = async function adminApi(req, res) {
 
     const url = new URL(req.url, "http://localhost");
     const resource = url.searchParams.get("resource");
-    if (resource === "check" && req.method === "GET") return res.status(200).json({ admin: true, email: user.email });
+    if (resource === "check" && req.method === "GET") return res.status(200).json({ admin: true, email: user.email, totp_verified: hasAal2TotpSession(token, user.id) });
+    if (!hasAal2TotpSession(token, user.id)) return sendError(res, 403, "Complete TOTP two-factor verification before accessing admin resources");
 
     if (resource === "dashboard" && req.method === "GET") {
       const base = supabaseBase();
