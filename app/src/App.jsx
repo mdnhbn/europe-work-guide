@@ -505,6 +505,24 @@ function AdminPanel() {
     setError(""); setMessage("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  const removeRecord = async (row) => {
+    if (!window.confirm(`“${rowTitle(resource, row)}” মুছে ফেলতে চান? এই কাজটি ফিরিয়ে আনা যাবে না।`)) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      if (resource === "ads") {
+        const next = items.filter((item) => item.id !== row.id);
+        await adminRequest("ads", "POST", { ads: next });
+      } else {
+        if (!["country_access", "visa_routes", "jobs"].includes(resource) || !row.id) {
+          throw new Error("এই রেকর্ডটি এখান থেকে নিরাপদে মুছে ফেলা যাবে না।");
+        }
+        await adminRequest(resource, "DELETE", { id: row.id });
+      }
+      if (editingKey === row[section.key]) { setEditingKey(null); setForm(freshAdminForm(section)); }
+      setMessage("রেকর্ড মুছে ফেলা হয়েছে।"); await loadItems(resource);
+    } catch (err) { setError(err.message || "রেকর্ড মুছে ফেলা যায়নি।"); }
+    finally { setBusy(false); }
+  };
   const save = async (event) => {
     event.preventDefault(); setBusy(true); setError(""); setMessage("");
     try {
@@ -530,7 +548,7 @@ function AdminPanel() {
       <div className="admin-fields">{section.fields.map((field) => <Field key={field.name} label={field.label}>{field.type === "textarea" || field.type === "json" ? <textarea required={field.required} rows={field.type === "json" ? 5 : 3} value={form[field.name] ?? ""} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })} /> : field.type === "select" ? <select required={field.required} value={form[field.name] ?? ""} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })}><option value="">নির্বাচন করুন</option>{field.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select> : field.type === "checkbox" ? <input className="checkbox-input" type="checkbox" checked={Boolean(form[field.name])} onChange={(e) => setForm({ ...form, [field.name]: e.target.checked })} /> : <input type={field.type === "csv" ? "text" : field.type || "text"} required={field.required} value={form[field.name] ?? ""} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })} />}</Field>)}</div>
       <ErrorMessage>{error}</ErrorMessage>{message && <p className="message success">{message}</p>}<div className="form-actions"><button className="button button-primary" disabled={busy}>{busy ? "সংরক্ষণ হচ্ছে…" : editingKey ? "পরিবর্তন সংরক্ষণ" : "যোগ করুন"}</button></div>
     </form>
-    <section className="admin-records"><div className="section-heading"><h3>বর্তমান {section.label} তালিকা</h3><button className="button button-light small" onClick={() => loadItems(resource)}>রিফ্রেশ</button></div>{loading ? <p className="loading-line">তথ্য লোড হচ্ছে…</p> : error ? <ErrorMessage>{error}</ErrorMessage> : !items.length ? <p className="muted empty-inline">এখনো কোনো তথ্য নেই।</p> : items.map((item) => <article className="admin-record" key={item[section.key] || item.id}><div><strong>{rowTitle(resource, item)}</strong><small>{item.review_status || (item.active === false ? "নিষ্ক্রিয়" : item.enabled === false ? "বন্ধ" : resource === "ads" ? item.active ? "সক্রিয়" : "নিষ্ক্রিয়" : "সক্রিয়")}</small></div><button className="button button-light small" onClick={() => startEdit(item)}>সম্পাদনা</button></article>)}</section>
+    <section className="admin-records"><div className="section-heading"><h3>বর্তমান {section.label} তালিকা</h3><button className="button button-light small" onClick={() => loadItems(resource)}>রিফ্রেশ</button></div>{loading ? <p className="loading-line">তথ্য লোড হচ্ছে…</p> : error ? <ErrorMessage>{error}</ErrorMessage> : !items.length ? <p className="muted empty-inline">এখনো কোনো তথ্য নেই।</p> : items.map((item) => <article className="admin-record" key={item[section.key] || item.id}><div><strong>{rowTitle(resource, item)}</strong><small>{item.review_status || (item.active === false ? "নিষ্ক্রিয়" : item.enabled === false ? "বন্ধ" : resource === "ads" ? item.active ? "সক্রিয়" : "নিষ্ক্রিয়" : "সক্রিয়")}</small></div><div className="admin-record-actions"><button className="button button-light small" onClick={() => startEdit(item)}>সম্পাদনা</button>{(resource === "ads" || ["country_access", "visa_routes", "jobs"].includes(resource)) && <button type="button" className="button button-danger small" disabled={busy} onClick={() => removeRecord(item)}>মুছুন</button>}</div></article>)}</section>
   </section>;
 }
 export default function App() {
