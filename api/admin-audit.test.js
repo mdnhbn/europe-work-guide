@@ -2,7 +2,11 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { createCipheriv } = require("node:crypto");
+const { gzipSync } = require("node:zlib");
 const adminApi = require("./admin");
+
+const backupKey = "ab".repeat(32);
 
 const base = "https://audit.example.test";
 const auditUrl = `${base}/rest/v1/admin_audit_log`;
@@ -27,6 +31,7 @@ async function invoke(t, { resource = "countries", method = "POST", body, replie
     GITHUB_TOKEN: "test-github",
     GITHUB_REPOSITORY: "example/work-guide",
     GITHUB_BRANCH: "test",
+    BACKUP_ENCRYPTION_KEY: backupKey,
   };
   const previous = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
   Object.assign(process.env, env);
@@ -113,4 +118,119 @@ test("keeps read access independent of audit write availability", async (t) => {
   assert.deepEqual(res.body, [country]);
   assert.equal(calls.length, 2);
   assert.match(calls[1].url, /\/countries\?select=\*/);
+});
+
+const legacyAccess = { country_code: "DE", nationality: "Bangladesh" };
+
+function backupBody(access) {
+  const tables = {
+    profiles: [],
+    countries: [],
+    country_access: [access],
+    visa_routes: [],
+    jobs: [],
+    source_pages: [],
+  };
+  const iv = Buffer.alloc(12, 5);
+  const cipher = createCipheriv("aes-256-gcm", Buffer.from(backupKey, "hex"), iv);
+  const payload = gzipSync(Buffer.from(JSON.stringify({ export_version: "1.0", tables })));
+  const ciphertext = Buffer.concat([cipher.update(payload), cipher.final()]);
+  return {
+    action: "restore",
+    mode: "merge",
+    confirm: true,
+    backup: {
+      format: "europe-work-guide-encrypted-backup",
+      version: 1,
+      iv: iv.toString("base64"),
+      tag: cipher.getAuthTag().toString("base64"),
+      data: ciphertext.toString("base64"),
+    },
+  };
+}
+
+function missingResidenceColumn() {
+  return response(400, { code: "42703", message: "column country_access.residence_country does not exist" });
+}
+
+function restoreReplies(probe) {
+  return [probe, ...Array.from({ length: 6 }, () => response(200, [])), response(201), response(201), response(201)];
+}
+
+test("restores legacy access rows into a migrated database using generic residence scope", async (t) => {
+  const { res, calls } = await invoke(t, {
+    resource: "backup",
+    body: backupBody(legacyAccess),
+    replies: restoreReplies(response(200, [])),
+  });
+  const write = calls.find((call) => call.url.includes("country_access?on_conflict="));
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.restored_rows, 1);
+  assert.match(decodeURIComponent(write.url), /on_conflict=country_code,nationality,residence_country$/);
+  assert.deepEqual(write.body, [{ ...legacyAccess, residence_country: "ANY" }]);
+});
+
+test("keeps the legacy restore conflict target when the residence column is missing", async (t) => {
+  const { res, calls } = await invoke(t, {
+    resource: "backup",
+    body: backupBody(legacyAccess),
+    replies: restoreReplies(missingResidenceColumn()),
+  });
+  const write = calls.find((call) => call.url.includes("country_access?on_conflict="));
+  assert.equal(res.statusCode, 200);
+  assert.match(decodeURIComponent(write.url), /on_conflict=country_code,nationality$/);
+  assert.deepEqual(write.body, [legacyAccess]);
+});
+
+test("rejects a residence-scoped restore into a legacy database before any writes", async (t) => {
+  const { res, calls } = await invoke(t, {
+    resource: "backup",
+    body: backupBody({ ...legacyAccess, residence_country: "Saudi Arabia" }),
+    replies: [missingResidenceColumn()],
+  });
+
+  assert.equal(res.statusCode, 409);
+  assert.match(res.body.error, /residence-aware matching migration/i);
+  assert.deepEqual(calls.map((call) => call.method), ["GET", "GET"]);
+});
+
+test("preserves specific residence scope when restoring into a migrated database", async (t) => {
+  const access = { ...legacyAccess, residence_country: "Saudi Arabia" };
+  const { res, calls } = await invoke(t, {
+    resource: "backup",
+    body: backupBody(access),
+    replies: restoreReplies(response(200, [])),
+  });
+  const write = calls.find((call) => call.url.includes("country_access?on_conflict="));
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(write.body, [access]);
+});
+
+test("saves valid source registry JSON to the configured branch", async (t) => {
+  const config = {
+    code: "DE",
+    name: "Germany",
+    language: "de",
+    sources: [{ url: "https://www.make-it-in-germany.com/en/", type: "official", check_every_days: 7 }],
+  };
+  const existing = { ...config, name: "Existing" };
+  const { res, calls } = await invoke(t, {
+    resource: "sources",
+    body: { config },
+    replies: [
+      response(200, [{ type: "file", name: "de.json" }]),
+      response(200, { content: Buffer.from(JSON.stringify(existing)).toString("base64"), sha: "previous" }),
+      response(201), response(200, { commit: { sha: "updated" } }), response(201),
+    ],
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.match(calls[1].url, /\/countries\?ref=test$/);
+  assert.match(calls[2].url, /\/de\.json\?ref=test$/);
+  const write = calls.find((call) => call.method === "PUT");
+  const content = Buffer.from(write.body.content, "base64").toString("utf8");
+  assert.equal(write.body.branch, "test");
+  assert.equal(write.body.sha, "previous");
+  assert.equal(content, JSON.stringify(config, null, 2) + "\n");
+  assert.deepEqual(JSON.parse(content), config);
 });

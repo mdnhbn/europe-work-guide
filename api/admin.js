@@ -84,10 +84,18 @@ async function readAds() {
 }
 
 
+const COUNTRY_ACCESS_CONFLICT_LEGACY = "country_code,nationality";
+const COUNTRY_ACCESS_CONFLICT_SCOPED = "country_code,nationality,residence_country";
+const RESIDENCE_BACKUP_FIELDS = {
+  profiles: ["current_residence_country", "target_countries"],
+  country_access: ["residence_country"],
+  visa_routes: ["nationality", "residence_country"],
+};
+
 const BACKUP_TABLES = [
   { name: "profiles", conflict: "user_id" },
   { name: "countries", conflict: "code" },
-  { name: "country_access", conflict: "country_code,nationality" },
+  { name: "country_access", conflict: COUNTRY_ACCESS_CONFLICT_LEGACY },
   { name: "visa_routes", conflict: "id" },
   { name: "jobs", conflict: "id" },
   { name: "source_pages", conflict: "url" },
@@ -154,6 +162,24 @@ async function fetchAllRows(table) {
   throw new Error(`Table ${table} exceeds the 100,000-row backup safety limit`);
 }
 
+async function getCountryAccessConflict() {
+  const response = await fetch(`${supabaseBase()}/rest/v1/country_access?select=residence_country&limit=0`, {
+    headers: serviceHeaders(),
+  });
+  if (response.ok) return COUNTRY_ACCESS_CONFLICT_SCOPED;
+  const error = await response.json().catch(() => null);
+  if (["42703", "PGRST204"].includes(error?.code) && /residence_country/i.test(error?.message || "")) {
+    return COUNTRY_ACCESS_CONFLICT_LEGACY;
+  }
+  throw new Error("Could not verify the residence matching schema. No data was changed.");
+}
+
+function hasResidenceBackupFields(tables) {
+  return Object.entries(RESIDENCE_BACKUP_FIELDS).some(([table, fields]) =>
+    tables[table].some((row) => row && fields.some((field) => Object.hasOwn(row, field)))
+  );
+}
+
 async function insertAudit(user, action, entity, beforeValue = null, afterValue = null) {
   const base = supabaseBase();
   if (!base || !env("SUPABASE_SERVICE_KEY")) return false;
@@ -206,14 +232,15 @@ async function githubApi(path, options = {}) {
 }
 
 async function readSourceConfigs() {
-  const directory = await githubApi("contents/scrapers/countries");
+  const branch = encodeURIComponent(env("GITHUB_BRANCH") || "main");
+  const directory = await githubApi(`contents/scrapers/countries?ref=${branch}`);
   if (!directory.ok) throw new Error("Could not list scraper source configurations");
   const entries = await directory.json();
   if (!Array.isArray(entries)) throw new Error("Source configuration directory is invalid");
   const files = entries.filter((item) => item.type === "file" && item.name.endsWith(".json"));
   const configs = [];
   for (const item of files) {
-    const response = await githubApi(`contents/scrapers/countries/${encodeURIComponent(item.name)}`);
+    const response = await githubApi(`contents/scrapers/countries/${encodeURIComponent(item.name)}?ref=${branch}`);
     if (!response.ok) throw new Error("Could not read a source configuration");
     const file = await response.json();
     let config;
@@ -415,7 +442,7 @@ module.exports = async function adminApi(req, res) {
       const path = `contents/scrapers/countries/${encodeURIComponent(filename)}`;
       const body = {
         message: `Update official scraper sources for ${config.code}`,
-        content: Buffer.from(`${JSON.stringify(config, null, 2)}\\n`, "utf8").toString("base64"),
+        content: Buffer.from(`${JSON.stringify(config, null, 2)}\n`, "utf8").toString("base64"),
         branch,
         ...(existing ? { sha: existing.sha } : {}),
       };
@@ -485,6 +512,14 @@ module.exports = async function adminApi(req, res) {
         }
         const mode = String(req.body?.mode || "");
         if (req.body?.confirm !== true || !["merge", "empty_database_restore"].includes(mode)) return sendError(res, 400, "Explicit confirmation and a valid restore mode are required");
+        let countryAccessConflict = COUNTRY_ACCESS_CONFLICT_LEGACY;
+        const hasResidenceFields = hasResidenceBackupFields(payload.tables);
+        if (counts.country_access || hasResidenceFields) {
+          countryAccessConflict = await getCountryAccessConflict();
+          if (hasResidenceFields && countryAccessConflict === COUNTRY_ACCESS_CONFLICT_LEGACY) {
+            return sendError(res, 409, "Apply the residence-aware matching migration before restoring this backup. No data was changed.");
+          }
+        }
         const current = {};
         for (const item of BACKUP_TABLES) current[item.name] = await fetchAllRows(item.name);
         if (mode === "empty_database_restore" && Object.values(current).some((rows) => rows.length > 0)) {
@@ -493,11 +528,15 @@ module.exports = async function adminApi(req, res) {
         await requireAudit(user, "backup_restore_requested", "full_backup", { mode, counts });
         let restored = 0;
         for (const item of BACKUP_TABLES) {
-          const rows = payload.tables[item.name];
+          let rows = payload.tables[item.name];
           if (!rows.length) continue;
+          const conflict = item.name === "country_access" ? countryAccessConflict : item.conflict;
+          if (item.name === "country_access" && countryAccessConflict === COUNTRY_ACCESS_CONFLICT_SCOPED) {
+            rows = rows.map((row) => ({ ...row, residence_country: row.residence_country ?? "ANY" }));
+          }
           for (let offset = 0; offset < rows.length; offset += 100) {
             const batch = rows.slice(offset, offset + 100);
-            const response = await fetch(`${supabaseBase()}/rest/v1/${item.name}?on_conflict=${encodeURIComponent(item.conflict)}`, {
+            const response = await fetch(`${supabaseBase()}/rest/v1/${item.name}?on_conflict=${encodeURIComponent(conflict)}`, {
               method: "POST",
               headers: serviceHeaders("return=minimal,resolution=merge-duplicates"),
               body: JSON.stringify(batch),
