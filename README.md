@@ -2,6 +2,18 @@
 
 Mobile-first Bengali web application that helps Bangladeshi workers compare official work-immigration information, keep a CV-style profile, review verified country access and visa routes, search verified jobs, and prepare a printable CV. It uses the existing Supabase tables. The migration `database/migrations/20261103_profiles_contact_details.sql` adds three nullable contact fields to `profiles`; it adds no tables or policies. Live app: https://europe-work-guide.vercel.app
 
+## Current production features (November 2026)
+
+The production UI now includes:
+- Side-by-side comparison of two countries using only rows marked verified.
+- Editable cover-letter drafts in Bengali or English, with print-to-PDF support.
+- Privacy, terms, and visa-disclaimer information plus a profile JSON export.
+- Regression tests for route/profile matching and a GitHub Actions workflow intended to build the frontend and validate scraper syntax.
+
+The latest production commit also passed the Vercel production build. Automated GitHub Actions status should be checked under the repository's Actions tab; the connector did not return a workflow-run record during this update.
+
+The privacy/terms content is a first-release draft and must be completed with the operator's legal identity and support contact before treating it as final. Profile JSON export is implemented; full account deletion, automated data retention/deletion, and encrypted restore workflow still need implementation.
+
 ## Production activation checklist
 
 The app code and deployment do not provide third-party credentials. Before all live workflows can run, configure these in their respective dashboards:
