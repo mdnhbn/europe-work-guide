@@ -22,6 +22,10 @@ These changes extend the existing Supabase/Vercel app rather than replacing its 
 
 **Still not fully implemented or not independently verified:** production-ready retention/deletion policy, current-residence-specific matching, every PRD admin module, a fully encrypted restore/preview workflow, all country-specific CV conventions, and full end-to-end authentication/admin testing against live Supabase. Self-service account deletion code is included, but it requires the server-only `SUPABASE_SERVICE_KEY` environment variable and must be verified against the live Supabase project. The latest Vercel build is not proof that external provider credentials or all live data operations are configured correctly. Encrypted full-backup export/preview/restore code is now included, with a 3 MB encrypted-payload safety limit; it requires `BACKUP_ENCRYPTION_KEY`, `SUPABASE_SERVICE_KEY`, GitHub Contents write access, and the audit migration below.
 
+## Current-residence-aware matching
+
+The profile now includes current country of residence and target countries. The country access and visa-route admin forms can scope records to a nationality/residence combination; `ANY` means the reviewed record is general rather than residence-specific. Apply `database/migrations/20261109_residence_aware_matching.sql` in the Supabase SQL Editor before deploying this profile change. Existing access records receive `ANY` so they remain generic rather than being incorrectly treated as verified for one residence. Existing routes are also tagged `ANY` by default. Do not claim a residence-specific route is verified until a reviewer checks the official source for that exact combination.
+
 ## Encrypted backup and audit log
 
 The admin panel includes an encrypted JSON export, backup validation/preview, merge restore, and full restore only when the supported database tables are empty. The backup is gzip-compressed and encrypted with AES-256-GCM. Transfers are limited to 3 MB of encrypted payload because serverless request/response bodies have size limits. Larger production datasets need direct object storage (S3-compatible or Supabase Storage) rather than this API transfer route.
