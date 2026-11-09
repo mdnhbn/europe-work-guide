@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './lib/supabase.js';
+import { isApplicableToProfile } from './lib/matching.js';
 
 const STATUS = { open: 'খোলা', limited: 'সীমিত', closed: 'বন্ধ', unknown: 'যাচাইকৃত তথ্য নেই' };
 function show(value) {
@@ -41,8 +42,8 @@ export default function ComparisonPanel({ countries, profile }) {
         supabase.from('jobs').select('*').eq('country_code', code).eq('review_status', 'verified').eq('active', true).order('posted_at', { ascending: false }),
       ]);
       if (accessResult.error || routeResult.error || jobResult.error) throw new Error('তুলনার তথ্য লোড করা যায়নি। পরে আবার চেষ্টা করুন।');
-      const eligibleAccess = (accessResult.data || []).filter((row) => !row.residence_country || row.residence_country === 'ANY' || row.residence_country === residence).sort((a, b) => Number(b.residence_country === residence) - Number(a.residence_country === residence));
-      const eligibleRoutes = (routeResult.data || []).filter((route) => (!route.nationality || route.nationality === 'ANY' || route.nationality === nationality) && (!route.residence_country || route.residence_country === 'ANY' || route.residence_country === residence));
+      const eligibleAccess = (accessResult.data || []).filter((row) => isApplicableToProfile({ nationality, current_residence_country: residence }, row)).sort((a, b) => Number(b.residence_country === residence) - Number(a.residence_country === residence));
+      const eligibleRoutes = (routeResult.data || []).filter((route) => isApplicableToProfile({ nationality, current_residence_country: residence }, route));
       return [code, { access: eligibleAccess[0] || null, routes: eligibleRoutes, jobs: jobResult.data || [] }];
     })).then(rows => { if (active) setData(Object.fromEntries(rows)); })
       .catch(() => { if (active) setData({}); })
