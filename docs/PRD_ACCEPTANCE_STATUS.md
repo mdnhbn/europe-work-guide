@@ -11,7 +11,7 @@ This file tracks implementation evidence separately from items that still need c
 - [x] Country comparison for verified access, visa routes, and active verified jobs.
 - [x] Current residence and target-country profile fields plus matching predicate; database migration is required before the new fields persist.
 - [x] Explainable heuristic job-match score based on preferred occupation, skill words in job text, target country, and experience wording.
-- [x] Editable Bengali/English cover-letter draft and print-to-PDF browser flow.
+- [x] Direct Bengali CV PDF download in three existing formats using embedded fonts. The renderer loads on demand in the browser. The existing print flow is available for CVs and editable Bengali/English cover letters.
 - [x] Admin UI code for countries, country access, visa routes, jobs, ads, dashboard counts, source registry, and conservative banner controls.
 - [x] Admin API source registry and manual scraper workflow dispatch code.
 - [x] AES-256-GCM + gzip backup export, validation/preview, merge restore, and empty-database-only full restore code, with 3 MB transfer limit.
@@ -50,7 +50,7 @@ After the migrations, run the [read-only release schema checks](../database/veri
 - The source scraper currently gathers official immigration pages for configured countries and has bounded GET retries for transient connection failures and HTTP 429/5xx responses. The source manager displays the last stored fetch and which checks are due. Fetch-failure details are available in workflow logs. A job connector and expanded automated country sources remain open.
 - The structured job migration, admin fields, validation, duplicate fingerprint and public expiry filtering are implemented. The migration awaits application. The official job connector, source-backed structured data, and automatic expiry processing remain open; job dates must come from the official source.
 - The official resource directory has links for Italy, Germany and France. Verified roadmap records for all required nationality and residence combinations still need official-source review and entry.
-- CV country-specific conventions, PDF upload, generated-document version history, and ReportLab/WeasyPrint server-side PDF generation are incomplete; the current browser flow uses print-to-PDF.
+- CV PDFs download directly from the browser. Country-specific conventions, PDF upload, document version history and server-side PDF generation remain open.
 - Ad network script units, pop-under runtime, and full session frequency controls are not implemented. Current release uses safe banner ads, a global switch, banner interval, and optional suppression on warning pages.
 - Complete user management, privacy-safe analytics, full settings, and an end-to-end audit verification pass remain open. The audit migration is not applied. See the [read-only schema check and audit runbook](retention-and-audit-verification.md).
 - The deployed architecture is currently React/Vite + Supabase + Vercel serverless APIs, rather than the PRD's preferred FastAPI/SQLAlchemy backend. A full migration to the PRD stack has not been done.
