@@ -14,6 +14,14 @@ The latest production commit also passed the Vercel production build. Automated 
 
 The privacy/terms content is a first-release draft and must be completed with the operator's legal identity and support contact before treating it as final. Profile JSON export is implemented; full account deletion, automated data retention/deletion, and encrypted restore workflow still need implementation.
 
+## Latest implementation update
+
+The production branch now includes country comparison, an editable cover-letter draft (English/Bengali), profile-completeness guidance, privacy/terms/disclaimer content with profile JSON export, admin dashboard record counts, and confirmation-protected deletion for admin-managed visa routes, country-access records, jobs, and ads. The Vercel production build passed for the latest application commit.
+
+These changes extend the existing Supabase/Vercel app rather than replacing its backend. Google/Facebook/phone authentication depends on provider credentials in Supabase. Admin endpoints depend on server-only Vercel environment variables. The scheduled official-source scraper depends on GitHub Actions secrets.
+
+**Still not fully implemented or not independently verified:** a complete account deletion flow, production-ready retention/deletion policy, current-residence-specific matching, every PRD admin module, a fully encrypted restore/preview workflow, all country-specific CV conventions, and full end-to-end authentication/admin testing against live Supabase. The latest Vercel build is not proof that external provider credentials or all live data operations are configured correctly.
+
 ## Production activation checklist
 
 The app code and deployment do not provide third-party credentials. Before all live workflows can run, configure these in their respective dashboards:
