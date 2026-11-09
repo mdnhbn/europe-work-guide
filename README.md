@@ -104,6 +104,8 @@ git clone https://github.com/mdnhbn/europe-work-guide.git
 cd europe-work-guide
 ```
 
+After installing Node.js 20+, run `./setup.ps1` in PowerShell on Windows or `bash ./setup.sh` on Linux. These scripts install the frontend dependencies from the lockfile. Start development with `cd app` and `npm run dev`.
+
 To publish later changes from the project folder, run:
 
 ```powershell
