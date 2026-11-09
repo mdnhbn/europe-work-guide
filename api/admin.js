@@ -330,6 +330,49 @@ module.exports = async function adminApi(req, res) {
       return res.status(200).json({ generated_at: new Date().toISOString(), counts });
     }
 
+
+    if (resource === "ad-settings" && req.method === "GET") {
+      const response = await githubApi("contents/app/public/ads-config.json?ref=" + encodeURIComponent(env("GITHUB_BRANCH") || "main"));
+      if (!response.ok) return sendError(res, 502, "Could not read advertisement settings");
+      const file = await response.json();
+      const settings = JSON.parse(Buffer.from(String(file.content || "").replace(/\s/g, ""), "base64").toString("utf8"));
+      return res.status(200).json(settings);
+    }
+
+    if (resource === "ad-settings" && req.method === "POST") {
+      const input = req.body?.settings;
+      if (!input || typeof input !== "object" || Array.isArray(input) ||
+          typeof input.ads_enabled !== "boolean" || typeof input.disable_on_legal_warnings !== "boolean" ||
+          !Number.isInteger(Number(input.banner_interval_minutes)) || Number(input.banner_interval_minutes) < 1 || Number(input.banner_interval_minutes) > 1440) {
+        return sendError(res, 400, "Invalid ad settings; interval must be between 1 and 1440 minutes");
+      }
+      if (input.popunder_enabled === true) return sendError(res, 400, "Pop-under is not implemented in this release and must remain disabled");
+      const currentResponse = await githubApi("contents/app/public/ads-config.json?ref=" + encodeURIComponent(env("GITHUB_BRANCH") || "main"));
+      if (!currentResponse.ok) return sendError(res, 502, "Could not read existing ad settings");
+      const current = await currentResponse.json();
+      const settings = {
+        ads_enabled: input.ads_enabled,
+        banner_interval_minutes: Number(input.banner_interval_minutes),
+        disable_on_legal_warnings: input.disable_on_legal_warnings,
+        popunder_enabled: false,
+        popunder_interval_minutes: 30,
+        popunder_max_per_session: 0,
+      };
+      const response = await githubApi("contents/app/public/ads-config.json", {
+        method: "PUT",
+        body: JSON.stringify({
+          message: "Update ad display settings from admin panel",
+          content: Buffer.from(JSON.stringify(settings, null, 2) + "\\n", "utf8").toString("base64"),
+          branch: env("GITHUB_BRANCH") || "main",
+          sha: current.sha,
+        }),
+      });
+      if (!response.ok) return sendError(res, 502, "Could not save ad settings; check GitHub Contents write permission");
+      const result = await response.json();
+      await insertAudit(user, "ad_settings_update", "ad-settings", null, settings);
+      return res.status(200).json({ settings, commit: result.commit?.sha || null });
+    }
+
     if (resource === "ads" && req.method === "DELETE") {
       const id = String(req.body?.id || "").trim();
       if (!id) return sendError(res, 400, "Advertisement id is required");
