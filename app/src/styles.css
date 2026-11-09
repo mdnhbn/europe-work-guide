@@ -313,3 +313,7 @@ input::placeholder { color: #a0aea8; }
 .progress-track{height:9px;background:#e3ebe6;border-radius:999px;overflow:hidden}
 .progress-track span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#176a51,#51a780);transition:width .2s ease}
 .profile-completeness .muted{font-size:12px;margin:10px 0 0}
+
+.admin-record-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.button-danger{background:#fff0f0;color:#9b3030;border:1px solid #f2cccc}
+.button-danger:hover{background:#ffe4e4}
