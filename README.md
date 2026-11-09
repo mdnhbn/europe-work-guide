@@ -12,7 +12,7 @@ The production UI now includes:
 
 The latest production commit also passed the Vercel production build. Automated GitHub Actions status should be checked under the repository's Actions tab; the connector did not return a workflow-run record during this update.
 
-The privacy/terms content is a first-release draft and must be completed with the operator's legal identity and support contact before treating it as final. Profile JSON export is implemented; full account deletion, automated data retention/deletion, and encrypted restore workflow still need implementation.
+The privacy/terms content is a first-release draft and must be completed with the operator's legal identity and support contact before treating it as final. Profile JSON export and a self-service account deletion endpoint are implemented, but deletion must be tested against the live Supabase project and the server-only service key must be configured. Automated retention/deletion is still not implemented.
 
 ## Latest implementation update
 
@@ -20,7 +20,33 @@ The production branch now includes country comparison, an editable cover-letter 
 
 These changes extend the existing Supabase/Vercel app rather than replacing its backend. Google/Facebook/phone authentication depends on provider credentials in Supabase. Admin endpoints depend on server-only Vercel environment variables. The scheduled official-source scraper depends on GitHub Actions secrets.
 
-**Still not fully implemented or not independently verified:** production-ready retention/deletion policy, current-residence-specific matching, every PRD admin module, a fully encrypted restore/preview workflow, all country-specific CV conventions, and full end-to-end authentication/admin testing against live Supabase. Self-service account deletion code is included, but it requires the server-only `SUPABASE_SERVICE_KEY` environment variable and must be verified against the live Supabase project. The latest Vercel build is not proof that external provider credentials or all live data operations are configured correctly.
+**Still not fully implemented or not independently verified:** production-ready retention/deletion policy, current-residence-specific matching, every PRD admin module, a fully encrypted restore/preview workflow, all country-specific CV conventions, and full end-to-end authentication/admin testing against live Supabase. Self-service account deletion code is included, but it requires the server-only `SUPABASE_SERVICE_KEY` environment variable and must be verified against the live Supabase project. The latest Vercel build is not proof that external provider credentials or all live data operations are configured correctly. Encrypted full-backup export/preview/restore code is now included, with a 3 MB encrypted-payload safety limit; it requires `BACKUP_ENCRYPTION_KEY`, `SUPABASE_SERVICE_KEY`, GitHub Contents write access, and the audit migration below.
+
+## Admin source registry and job matching
+
+The admin panel can edit country source-registry JSON files in `scrapers/countries/`, inspect recent `source_pages` fetch metadata, request a manual scraper run through GitHub Actions, and control the global banner switch/frequency. The token used for source editing needs repository Contents read/write; manual run also needs Actions: write. Banner ads use localStorage frequency control. Pop-under and arbitrary third-party script injection intentionally remain disabled. Source URLs must use HTTPS. This registry currently covers only configured country files; a working connector must still be implemented for each source type.
+
+Verified job cards now show an explainable heuristic profile-match score based on exact preferred-occupation matches, skill words appearing in the job text, target-country preference, and experience wording. This is not an AI hiring prediction or a visa eligibility assessment. Because the current database/job connector does not yet supply structured required skills, salary, language levels, deadlines, or employment types for every job, those fields are not fabricated.
+
+## Current-residence-aware matching
+
+The profile now includes current country of residence and target countries. The country access and visa-route admin forms can scope records to a nationality/residence combination; `ANY` means the reviewed record is general rather than residence-specific. Apply `database/migrations/20261109_residence_aware_matching.sql` in the Supabase SQL Editor before deploying this profile change. Existing access records receive `ANY` so they remain generic rather than being incorrectly treated as verified for one residence. Existing routes are also tagged `ANY` by default. Do not claim a residence-specific route is verified until a reviewer checks the official source for that exact combination.
+
+## Advertising controls
+
+`app/public/ads-config.json` stores the global ad switch, banner frequency in minutes, and an option to suppress ads on legal/immigration-warning pages. The browser tracks the last banner display in localStorage. The admin can edit these settings from the admin panel. Pop-under settings are fixed off because the current release does not implement a compliant pop-under runtime; arbitrary HTML/script execution from ad entries is not supported.
+
+## Encrypted backup and audit log
+
+The admin panel includes an encrypted JSON export, backup validation/preview, merge restore, and full restore only when the supported database tables are empty. The backup is gzip-compressed and encrypted with AES-256-GCM. Transfers are limited to 3 MB of encrypted payload because serverless request/response bodies have size limits. Larger production datasets need direct object storage (S3-compatible or Supabase Storage) rather than this API transfer route.
+
+Before using these features:
+1. Set a random 32-byte `BACKUP_ENCRYPTION_KEY` in Vercel server-only environment variables (64 hex characters or base64). Keep it outside the database and retain it securely; losing it makes old backups unrecoverable.
+2. Apply `database/migrations/20261109_admin_backup_audit.sql` in the Supabase SQL Editor. It creates an append-only audit log table with no browser-user access.
+3. Ensure `SUPABASE_SERVICE_KEY` and the repository-scoped `GITHUB_TOKEN` are configured. Backups include the current ad configuration, so the GitHub token is required.
+4. After changing environment variables, redeploy Vercel.
+
+Restore uses merge-upsert semantics for supported tables. A restore may partially import earlier batches if a later database operation fails; inspect the database and audit log before retrying. Immigration records remain subject to human review before public use.
 
 ## Production activation checklist
 
@@ -81,6 +107,8 @@ To get a fresh local copy:
 git clone https://github.com/mdnhbn/europe-work-guide.git
 cd europe-work-guide
 ```
+
+After installing Node.js 20+, run `./setup.ps1` in PowerShell on Windows or `bash ./setup.sh` on Linux. These scripts install the frontend dependencies from the lockfile. Start development with `cd app` and `npm run dev`.
 
 To publish later changes from the project folder, run:
 

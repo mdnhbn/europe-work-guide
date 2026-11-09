@@ -322,3 +322,54 @@ input::placeholder { color: #a0aea8; }
 .account-danger-zone strong{color:#8f2929}.account-danger-zone p{font-size:12px;line-height:1.75;color:#7d5555;margin:6px 0 0}
 .account-danger-zone .message{grid-column:1/-1;margin:0}
 @media(max-width:700px){.account-danger-zone{grid-template-columns:1fr}.account-danger-zone button{width:100%}}
+
+.admin-maintenance{margin-top:22px}
+.maintenance-action,.maintenance-audit{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 0;border-top:1px solid var(--line)}
+.maintenance-action strong,.maintenance-audit h3{margin:0;font-size:14px}
+.maintenance-action p,.maintenance-audit .muted{margin:5px 0 0;font-size:12px;line-height:1.65}
+.maintenance-restore{padding:18px 0;border-top:1px solid var(--line)}
+.maintenance-restore h3{margin:0 0 12px;font-size:15px}
+.maintenance-restore .field{max-width:560px}
+.maintenance-mode{display:grid;gap:10px;margin:15px 0;font-size:13px}
+.maintenance-mode label{display:flex;align-items:flex-start;gap:8px}
+.maintenance-mode input{margin-top:4px}
+.backup-preview{margin-top:18px;border:1px solid var(--line);background:#f8faf9;border-radius:12px;padding:15px}
+.backup-preview h4{margin:0 0 6px}
+.backup-preview .muted{font-size:12px}
+.backup-counts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.backup-counts>div{padding:10px;background:#fff;border:1px solid var(--line);border-radius:9px;min-width:0}
+.backup-counts span,.backup-counts small{display:block;color:var(--muted);font-size:11px;overflow-wrap:anywhere}
+.backup-counts strong{display:block;font-size:20px;margin:4px 0}
+.audit-list{display:grid;gap:8px;margin-top:12px}
+.audit-entry{display:grid;grid-template-columns:1fr auto;gap:5px 12px;border:1px solid var(--line);border-radius:10px;padding:12px}
+.audit-entry>div{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.audit-entry>div strong{font-size:12px}.audit-entry>div span,.audit-entry p,.audit-entry time{font-size:11px;color:var(--muted)}
+.audit-entry p{margin:0}.audit-entry time{grid-column:1/-1}
+@media(max-width:700px){.maintenance-action,.maintenance-audit{align-items:stretch;flex-direction:column}.maintenance-action button{width:100%}.backup-counts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.source-manager{margin-top:22px}
+.source-toolbar{display:flex;align-items:end;gap:12px;margin:15px 0}
+.source-toolbar .field{flex:1;max-width:560px}
+.source-json-editor{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;line-height:1.6;white-space:pre;tab-size:2}
+.source-history{margin-top:24px;padding-top:18px;border-top:1px solid var(--line)}
+.source-history .section-heading{align-items:center}
+.source-history .section-heading h3{margin:0;font-size:14px}
+.source-history-list{display:grid;gap:8px}
+.source-history-row{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--line);border-radius:10px;padding:12px}
+.source-history-row>div{display:grid;gap:5px;min-width:0}
+.source-history-row strong{font-size:12px}
+.source-history-row a{font-size:12px;overflow-wrap:anywhere}
+.source-history-row small{font-size:10px;color:var(--muted)}
+.source-changed,.source-unchanged{flex-shrink:0;border-radius:99px;padding:5px 8px;font-size:10px}
+.source-changed{background:#fff0d8;color:#81500a}.source-unchanged{background:#eaf6ef;color:#246347}
+@media(max-width:700px){.source-toolbar{align-items:stretch;flex-direction:column}.source-toolbar .field{max-width:none}.source-toolbar button{width:100%}.source-history-row{align-items:flex-start;flex-direction:column}}
+
+.job-match-score{display:inline-flex;align-items:center;border:1px solid #cfe6d7;background:#eff8f2;color:#226544;border-radius:999px;padding:5px 9px;font-size:10px;font-weight:700;white-space:nowrap}
+.job-match-reasons{margin:8px 0 12px;padding-left:20px;color:var(--muted);font-size:12px;line-height:1.7}
+
+.ad-settings-panel{margin-top:22px}
+.ad-setting-toggle{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.ad-setting-toggle span{display:grid;gap:4px}.ad-setting-toggle strong{font-size:13px}.ad-setting-toggle small{font-size:11px;color:var(--muted);line-height:1.6}
+.ad-setting-toggle input{width:20px;height:20px;flex-shrink:0;accent-color:var(--green)}
+.ad-setting-interval{max-width:320px;margin:16px 0}
+.ad-settings-panel .message.warning{background:#fff8e8;color:#81500a;border:1px solid #f2dfb3;border-radius:10px;padding:12px;font-size:12px;line-height:1.6}

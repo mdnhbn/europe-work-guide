@@ -2,11 +2,12 @@
 -- Apply to the existing production schema; no tables or policies are created here.
 
 INSERT INTO public.country_access (
-  country_code, nationality, access_status, quota_included, restrictions,
+  country_code, nationality, residence_country, access_status, quota_included, restrictions,
   apply_where, documents_note, official_url, review_status, last_verified
 ) VALUES (
   'IT',
   'Bangladesh',
+  'ANY',
   'limited',
   true,
   'বাংলাদেশি নাগরিকরা ইতালির ২০২৬–২০২৮ Flussi quota program-এর তালিকাভুক্ত। ২০২৬ সালে মৌসুমি কৃষি ও পর্যটন কাজের তালিকায় বাংলাদেশ স্পষ্টভাবে আছে। প্রতিটি ক্যাটাগরিতে অবশিষ্ট quota থাকতে হবে। বাংলাদেশি নাগরিকদের Nulla Osta ইস্যুর আগে Questura-এর অনুকূল মতামত ও INL যাচাই প্রয়োজন; কৃষি খাতে AGEA-ও যুক্ত থাকে। চাকরি বা ভিসা নিশ্চিত নয়।',
@@ -16,7 +17,7 @@ INSERT INTO public.country_access (
   'verified',
   '2026-11-03'
 )
-ON CONFLICT (country_code, nationality) DO UPDATE SET
+ON CONFLICT (country_code, nationality, residence_country) DO UPDATE SET
   access_status = EXCLUDED.access_status,
   quota_included = EXCLUDED.quota_included,
   restrictions = EXCLUDED.restrictions,

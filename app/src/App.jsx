@@ -3,15 +3,18 @@ import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input';
 import phoneLabels from 'react-phone-number-input/locale/en';
 import 'react-phone-number-input/style.css';
 import { getOAuthProviderEnabled, isSupabaseConfigured, supabase } from './lib/supabase.js';
-import { matchRoute } from './lib/matching.js';
+import { isApplicableToProfile, matchRoute, scoreJobMatch } from './lib/matching.js';
 import { adminRequest } from './lib/adminApi.js';
 import ComparisonPanel from './ComparisonPanel.jsx';
 import CoverLetterPanel from './CoverLetterPanel.jsx';
 import LegalPanel from './LegalPanel.jsx';
 import AdminDashboard from './AdminDashboard.jsx';
+import AdminMaintenance from './AdminMaintenance.jsx';
+import SourceManager from './SourceManager.jsx';
+import AdSettingsPanel from './AdSettingsPanel.jsx';
 
 const EMPTY_PROFILE = {
-  full_name: '', contact_email: '', phone: '', address: '', birth_date: '', nationality: 'Bangladesh', education: [], experience: [],
+  full_name: '', contact_email: '', phone: '', address: '', birth_date: '', nationality: 'Bangladesh', current_residence_country: 'Bangladesh', target_countries: [], education: [], experience: [],
   skills: [], languages: [], desired_occupations: [],
 };
 const NOTICE = 'এটা শুধু তথ্যের জন্য। আবেদনের আগে অফিশিয়াল সাইটে যাচাই করুন। টাকার বিনিময়ে ভিসার প্রতিশ্রুতি দেওয়া কাউকে বিশ্বাস করবেন না।';
@@ -208,25 +211,27 @@ function RepeatableList({ title, entries, fields, onChange, emptyEntry }) {
     {entries.map((entry, index) => <div className="repeat-item" key={`${title}-${index}`}>{fields.map((field) => <Field key={field.name} label={field.label}><input type={field.type || 'text'} min={field.type === 'number' ? '0' : undefined} step={field.type === 'number' ? '0.5' : undefined} value={entry[field.name] ?? ''} placeholder={field.placeholder || ''} onChange={(e) => onChange(entries.map((item, i) => i === index ? { ...item, [field.name]: e.target.value } : item))} /></Field>)}<button type="button" className="remove-button" onClick={() => onChange(entries.filter((_, i) => i !== index))}>মুছুন</button></div>)}
   </section>;
 }
-function ProfileForm({ profile, userId, onSaved }) {
+function ProfileForm({ profile, userId, onSaved, countries = [] }) {
   const [form, setForm] = useState(profile);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [warning, setWarning] = useState('');
   useEffect(() => setForm(profile), [profile]);
   const setValue = (key, value) => { setForm((current) => ({ ...current, [key]: value })); setSaved(false); };
   const updateList = (key, value) => { setValue(key, value); };
   const completenessValues = [
-    form.full_name, form.contact_email, form.phone, form.birth_date, form.nationality,
+    form.full_name, form.contact_email, form.phone, form.birth_date, form.nationality, form.current_residence_country,
     Array.isArray(form.education) && form.education.some((item) => item.degree || item.institution),
     Array.isArray(form.experience) && form.experience.some((item) => item.title || item.employer || item.description),
     Array.isArray(form.skills) && form.skills.length > 0,
     Array.isArray(form.languages) && form.languages.some((item) => item.name && item.level),
     Array.isArray(form.desired_occupations) && form.desired_occupations.length > 0,
+    Array.isArray(form.target_countries) && form.target_countries.length > 0,
   ];
   const completeness = Math.round(completenessValues.filter((value) => Array.isArray(value) ? value.length > 0 : typeof value === 'string' ? value.trim().length > 0 : Boolean(value)).length / completenessValues.length * 100);
   const submit = async (event) => {
-    event.preventDefault(); setBusy(true); setError(''); setSaved(false);
+    event.preventDefault(); setBusy(true); setError(''); setWarning(''); setSaved(false);
     const payload = {
       user_id: userId,
       full_name: (form.full_name || "").trim(),
@@ -235,6 +240,8 @@ function ProfileForm({ profile, userId, onSaved }) {
       address: (form.address || '').trim(),
       birth_date: form.birth_date || null,
       nationality: (form.nationality || '').trim() || 'Bangladesh',
+      current_residence_country: (form.current_residence_country || '').trim() || 'Bangladesh',
+      target_countries: Array.isArray(form.target_countries) ? form.target_countries.filter(Boolean) : [],
       education: (Array.isArray(form.education) ? form.education : []).map((item) => ({ degree: item.degree || '', institution: item.institution || '', year: item.year || '' })),
       experience: (Array.isArray(form.experience) ? form.experience : []).map((item) => ({ title: item.title || '', employer: item.employer || '', country: item.country || '', years: item.years === '' ? null : Number(item.years), description: item.description || '' })),
       skills: csvToArray(arrayToCsv(form.skills)),
@@ -243,7 +250,15 @@ function ProfileForm({ profile, userId, onSaved }) {
       updated_at: new Date().toISOString(),
     };
     try {
-      const { error: saveError } = await supabase.from('profiles').upsert(payload, { onConflict: 'user_id' });
+      let { error: saveError } = await supabase.from('profiles').upsert(payload, { onConflict: 'user_id' });
+      if (saveError && ['PGRST204', '42703'].includes(saveError.code)) {
+        const legacyPayload = { ...payload };
+        delete legacyPayload.current_residence_country;
+        delete legacyPayload.target_countries;
+        const fallback = await supabase.from('profiles').upsert(legacyPayload, { onConflict: 'user_id' });
+        saveError = fallback.error;
+        if (!saveError) setWarning('মূল প্রোফাইল সংরক্ষিত হয়েছে। বর্তমান বসবাসের দেশ ও পছন্দের দেশ সংরক্ষণ করতে Supabase-এ database/migrations/20261109_residence_aware_matching.sql প্রয়োগ করতে হবে।');
+      }
       if (saveError) throw saveError;
       setForm((current) => ({ ...current, ...payload })); setSaved(true); onSaved(payload);
     } catch { setError('প্রোফাইল সংরক্ষণ করা যায়নি। সংযোগ বা অনুমতি যাচাই করে আবার চেষ্টা করুন।'); }
@@ -251,12 +266,12 @@ function ProfileForm({ profile, userId, onSaved }) {
   };
   return <form className="panel profile-form" onSubmit={submit}><div className="panel-heading"><div><p className="eyebrow">আপনার তথ্য</p><h2>আমার প্রোফাইল</h2></div><span className="privacy-pill">🔒 শুধু আপনার অ্যাকাউন্ট</span></div><p className="muted">আপনার দেওয়া তথ্য দিয়ে ভিসা পথের শর্ত মিলিয়ে দেখা হবে। কোনো তথ্য অনুমান করা হবে না।</p>
     <section className="profile-completeness" aria-label="প্রোফাইল সম্পূর্ণতা"><div className="section-heading"><h3>প্রোফাইল সম্পূর্ণতা</h3><strong>{completeness}%</strong></div><div className="progress-track" role="progressbar" aria-valuenow={completeness} aria-valuemin="0" aria-valuemax="100"><span style={{ width: `${completeness}%` }} /></div><p className="muted">শিক্ষা, কাজের অভিজ্ঞতা, দক্ষতা, ভাষা ও পছন্দের পেশা যোগ করলে চাকরির মিল আরও উপযোগী হবে। অনুপস্থিত তথ্য অনুমান করে পূরণ করা হয় না।</p></section>
-    <div className="form-grid"><Field label="পুরো নাম"><input value={form.full_name || ''} onChange={(e) => setValue('full_name', e.target.value)} autoComplete="name" /></Field><Field label="জন্মতারিখ"><input type="date" value={form.birth_date || ''} onChange={(e) => setValue('birth_date', e.target.value)} /></Field><Field label="জাতীয়তা"><input value={form.nationality || ''} onChange={(e) => setValue('nationality', e.target.value)} placeholder="Bangladesh" /></Field><Field label="যোগাযোগের ইমেইল"><input type="email" autoComplete="email" value={form.contact_email || ''} onChange={(e) => setValue('contact_email', e.target.value)} /></Field><Field label="ফোন নম্বর"><input type="tel" autoComplete="tel" value={form.phone || ''} onChange={(e) => setValue('phone', e.target.value)} /></Field><Field label="ঠিকানা"><input autoComplete="street-address" value={form.address || ''} onChange={(e) => setValue('address', e.target.value)} /></Field><Field label="পছন্দের পেশা" hint="কমা দিয়ে আলাদা করুন"><input value={arrayToCsv(form.desired_occupations)} onChange={(e) => setValue('desired_occupations', csvToArray(e.target.value))} placeholder="যেমন: Cook, Care worker" /></Field><Field label="দক্ষতা" hint="কমা দিয়ে আলাদা করুন"><input value={arrayToCsv(form.skills)} onChange={(e) => setValue('skills', csvToArray(e.target.value))} placeholder="যেমন: রান্না, ওয়েল্ডিং" /></Field></div>
+    <div className="form-grid"><Field label="পুরো নাম"><input value={form.full_name || ''} onChange={(e) => setValue('full_name', e.target.value)} autoComplete="name" /></Field><Field label="জন্মতারিখ"><input type="date" value={form.birth_date || ''} onChange={(e) => setValue('birth_date', e.target.value)} /></Field><Field label="জাতীয়তা"><input value={form.nationality || ''} onChange={(e) => setValue('nationality', e.target.value)} placeholder="Bangladesh" /></Field><Field label="বর্তমান বসবাসের দেশ"><select value={form.current_residence_country || 'Bangladesh'} onChange={(e) => setValue('current_residence_country', e.target.value)}>{[['Bangladesh','বাংলাদেশ'],['Malaysia','Malaysia'],['Singapore','Singapore'],['Switzerland','Switzerland'],['Saudi Arabia','Saudi Arabia'],['Qatar','Qatar'],['Oman','Oman'],['United States','United States'],['Italy','Italy'],['Germany','Germany'],['France','France'],['Portugal','Portugal'],['Spain','Spain'],['Poland','Poland'],['Netherlands','Netherlands']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></Field><Field label="যোগাযোগের ইমেইল"><input type="email" autoComplete="email" value={form.contact_email || ''} onChange={(e) => setValue('contact_email', e.target.value)} /></Field><Field label="ফোন নম্বর"><input type="tel" autoComplete="tel" value={form.phone || ''} onChange={(e) => setValue('phone', e.target.value)} /></Field><Field label="ঠিকানা"><input autoComplete="street-address" value={form.address || ''} onChange={(e) => setValue('address', e.target.value)} /></Field><Field label="পছন্দের দেশ" hint="একাধিক দেশ নির্বাচন করতে Ctrl/Command ধরে রাখুন"><select multiple size={4} value={form.target_countries || []} onChange={(e) => setValue('target_countries', Array.from(e.target.selectedOptions, (option) => option.value))}>{countries.filter((country) => country.enabled !== false).map((country) => <option key={country.code} value={country.code}>{country.name}</option>)}</select></Field><Field label="পছন্দের পেশা" hint="কমা দিয়ে আলাদা করুন"><input value={arrayToCsv(form.desired_occupations)} onChange={(e) => setValue('desired_occupations', csvToArray(e.target.value))} placeholder="যেমন: Cook, Care worker" /></Field><Field label="দক্ষতা" hint="কমা দিয়ে আলাদা করুন"><input value={arrayToCsv(form.skills)} onChange={(e) => setValue('skills', csvToArray(e.target.value))} placeholder="যেমন: রান্না, ওয়েল্ডিং" /></Field></div>
     <RepeatableList title="শিক্ষা" entries={form.education || []} onChange={(v) => updateList('education', v)} emptyEntry={{ degree: '', institution: '', year: '' }} fields={[{ name: 'degree', label: 'ডিগ্রি / সনদ' }, { name: 'institution', label: 'প্রতিষ্ঠান' }, { name: 'year', label: 'বছর', type: 'number' }]} />
     <RepeatableList title="কাজের অভিজ্ঞতা" entries={form.experience || []} onChange={(v) => updateList('experience', v)} emptyEntry={{ title: '', employer: '', country: '', years: '', description: '' }} fields={[{ name: 'title', label: 'পদ / কাজ' }, { name: 'employer', label: 'প্রতিষ্ঠান' }, { name: 'country', label: 'দেশ' }, { name: 'years', label: 'বছর', type: 'number' }, { name: 'description', label: 'কাজের বিবরণ' }]} />
     <RepeatableList title="ভাষা" entries={form.languages || []} onChange={(v) => updateList('languages', v)} emptyEntry={{ name: '', level: '' }} fields={[{ name: 'name', label: 'ভাষা' }]} />
     {(form.languages || []).length > 0 && <div className="language-level-list">{form.languages.map((item, index) => <Field key={index} label={`${item.name || `ভাষা ${index + 1}`} — স্তর`}><select value={item.level || ''} onChange={(e) => updateList('languages', form.languages.map((entry, i) => i === index ? { ...entry, level: e.target.value } : entry))}><option value="">স্তর নির্বাচন করুন</option>{['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'Native'].map((level) => <option key={level} value={level}>{level === 'Native' ? 'মাতৃভাষা / Native' : level}</option>)}</select></Field>)}</div>}
-    <ErrorMessage>{error}</ErrorMessage>{saved && <p className="message success">প্রোফাইল সংরক্ষণ হয়েছে।</p>}<div className="form-actions"><button className="button button-primary" disabled={busy}>{busy ? 'সংরক্ষণ হচ্ছে…' : 'প্রোফাইল সংরক্ষণ করুন'}</button></div>
+    <ErrorMessage>{error}</ErrorMessage>{saved && <p className="message success">প্রোফাইল সংরক্ষণ হয়েছে।</p>}{warning && <p className="message error" role="status">{warning}</p>}<div className="form-actions"><button className="button button-primary" disabled={busy}>{busy ? 'সংরক্ষণ হচ্ছে…' : 'প্রোফাইল সংরক্ষণ করুন'}</button></div>
   </form>;
 }
 function CheckList({ checks }) {
@@ -292,21 +307,22 @@ function CountriesPanel({ profile }) {
   const [countryLoading, setCountryLoading] = useState({});
   const [countryErrors, setCountryErrors] = useState({});
   const nationality = profile.nationality?.trim() || 'Bangladesh';
+  const residence = profile.current_residence_country?.trim() || 'Bangladesh';
   useEffect(() => {
     let active = true;
     (async () => {
       setLoading(true); setError('');
       const [countryResult, accessResult] = await Promise.all([
         supabase.from('countries').select('code,name,languages,enabled').eq('enabled', true),
-        supabase.from('country_access').select('*').eq('nationality', nationality).eq('review_status', 'verified'),
+        supabase.from('country_access').select('*').in('nationality', [nationality, 'ANY']).eq('review_status', 'verified'),
       ]);
       if (!active) return;
       if (countryResult.error || accessResult.error) setError('দেশের তালিকা লোড করা যায়নি। পরে আবার চেষ্টা করুন।');
-      else { setCountries(countryResult.data || []); setAccessRows(accessResult.data || []); }
+      else { setCountries(countryResult.data || []); setAccessRows((accessResult.data || []).filter((row) => isApplicableToProfile({ nationality, current_residence_country: residence }, row)).sort((a, b) => Number(a.residence_country === residence) - Number(b.residence_country === residence))); }
       setLoading(false);
     })();
     return () => { active = false; };
-  }, [nationality]);
+  }, [nationality, residence]);
   const accessByCode = useMemo(() => Object.fromEntries(accessRows.map((row) => [row.country_code, row])), [accessRows]);
   const sorted = useMemo(() => [...countries].sort((a, b) => {
     const statusA = accessByCode[a.code]?.access_status || 'unknown';
@@ -324,7 +340,7 @@ function CountriesPanel({ profile }) {
       supabase.from('jobs').select('*').eq('country_code', country.code).eq('review_status', 'verified').eq('active', true).order('posted_at', { ascending: false }),
     ]);
     if (routeResult.error || jobResult.error) setCountryErrors((current) => ({ ...current, [country.code]: 'এই দেশের তথ্য লোড করা যায়নি। পরে আবার চেষ্টা করুন।' }));
-    else setCountryData((current) => ({ ...current, [country.code]: { routes: routeResult.data || [], jobs: jobResult.data || [] } }));
+    else setCountryData((current) => ({ ...current, [country.code]: { routes: (routeResult.data || []).filter((route) => isApplicableToProfile({ nationality, current_residence_country: residence }, route)), jobs: jobResult.data || [] } }));
     setCountryLoading((current) => ({ ...current, [country.code]: false }));
   };
   return <section className="panel countries-panel"><div className="panel-heading"><div><p className="eyebrow">দেশ ও সুযোগ</p><h2>দেশ ও চাকরি</h2></div><span className="nationality-pill">জাতীয়তা: {nationality}</span></div><p className="muted">অবস্থা কেবল যাচাইকৃত তথ্য থেকে দেখানো হয়। দেশ খুলে রুটের শর্ত, ফি, নথি ও সরকারি লিংক দেখুন।</p><ErrorMessage>{error}</ErrorMessage>
@@ -358,23 +374,19 @@ function JobsPanel({ profile, countries }) {
     if (!normalizedQuery) return true;
     const searchable = [job.title, job.occupation, job.employer, job.location, job.description].filter(Boolean).join(' ').toLocaleLowerCase();
     return searchable.includes(normalizedQuery);
-  }).sort((a, b) => {
-    const occupationA = String(a.occupation || '').trim().toLocaleLowerCase();
-    const occupationB = String(b.occupation || '').trim().toLocaleLowerCase();
-    const matchA = desiredOccupations.some((occupation) => occupationA === occupation);
-    const matchB = desiredOccupations.some((occupation) => occupationB === occupation);
-    if (matchA !== matchB) return matchA ? -1 : 1;
+  }).map((job) => ({ ...job, match: scoreJobMatch(profile, job) })).sort((a, b) => {
+    if (a.match.score !== b.match.score) return b.match.score - a.match.score;
     return String(b.posted_at || '').localeCompare(String(a.posted_at || ''));
   });
 
-  const profileMatch = (job) => desiredOccupations.includes(String(job.occupation || '').trim().toLocaleLowerCase());
+  const profileMatch = (job) => scoreJobMatch(profile, job).occupationMatch;
   const hasVerifiedJobs = jobs.length > 0;
   return <section className="panel jobs-panel"><div className="panel-heading"><div><p className="eyebrow">প্রোফাইল-ভিত্তিক খোঁজ</p><h2>চাকরি খুঁজুন</h2></div><span className="count-pill">{loading ? '…' : `${visibleJobs.length}টি`}</span></div>
-    <p className="muted">এখানে শুধু যাচাইকৃত ও সক্রিয় চাকরি দেখানো হয়। আপনার পছন্দের পেশার সঙ্গে হুবহু নাম মিললে সেটি আগে দেখানো হবে; চাকরির মিল ভিসার যোগ্যতা নিশ্চিত করে না।</p>
+    <p className="muted">এখানে শুধু যাচাইকৃত ও সক্রিয় চাকরি দেখানো হয়। স্কোরটি প্রোফাইলের পেশা, দক্ষতার শব্দ, অভিজ্ঞতা ও পছন্দের দেশের ভিত্তিতে একটি আনুমানিক মিল—এটি নিয়োগ বা ভিসার যোগ্যতার নিশ্চয়তা নয়।</p>
     {desiredOccupations.length > 0 && <div className="job-suggestions"><span>আপনার পছন্দের পেশা:</span>{profile.desired_occupations.map((occupation, index) => <button type="button" className="suggestion-chip" key={`${occupation}-${index}`} onClick={() => setQuery(occupation)}>{occupation}</button>)}</div>}
     <div className="job-search-controls"><Field label="পেশা বা কীওয়ার্ড"><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="যেমন: Cook, Care worker" /></Field><Field label="দেশ"><select value={countryCode} onChange={(event) => setCountryCode(event.target.value)}><option value="">সব দেশ</option>{countries.map((country) => <option key={country.code} value={country.code}>{country.name}</option>)}</select></Field></div>
     <ErrorMessage>{error}</ErrorMessage>
-    {loading ? <div className="loading-state">যাচাইকৃত চাকরি খোঁজা হচ্ছে…</div> : error ? null : visibleJobs.length > 0 ? <div className="job-results">{visibleJobs.map((job) => <article className="job-card" key={job.id}><div className="job-title-row"><div><h3>{displayValue(job.title)}</h3><p className="muted">{countries.find((country) => country.code === job.country_code)?.name || job.country_code} · {displayValue(job.location)}</p></div>{profileMatch(job) && <span className="verified-tag">পছন্দের পেশার সঙ্গে মেলে</span>}</div><p><strong>{displayValue(job.employer)}</strong> · {displayValue(job.occupation)}</p><p>{displayValue(job.description)}</p><p className="muted">প্রকাশিত {dateLabel(job.posted_at)}</p>{job.apply_url && <a href={job.apply_url} target="_blank" rel="noreferrer">আবেদনের পৃষ্ঠা ↗</a>}</article>)}</div> : <div className="empty-state"><span>🔎</span><h3>{hasVerifiedJobs ? 'এই অনুসন্ধানে কোনো যাচাইকৃত চাকরি মেলেনি' : 'এখনো কোনো যাচাইকৃত সক্রিয় চাকরি নেই'}</h3><p>{hasVerifiedJobs ? 'অন্য পেশা বা দেশ দিয়ে চেষ্টা করুন, অথবা EURES-এ সরাসরি খুঁজুন।' : 'EURES-এর সরকারি চাকরি অনুসন্ধানে দেশ ও পেশা বেছে বর্তমান বিজ্ঞপ্তি দেখুন।'}</p><a className="button button-primary" href="https://europa.eu/eures/portal/jv-se/home?pageCode=find_a_job" target="_blank" rel="noreferrer">EURES-এ চাকরি খুঁজুন ↗</a></div>}
+    {loading ? <div className="loading-state">যাচাইকৃত চাকরি খোঁজা হচ্ছে…</div> : error ? null : visibleJobs.length > 0 ? <div className="job-results">{visibleJobs.map((job) => <article className="job-card" key={job.id}><div className="job-title-row"><div><h3>{displayValue(job.title)}</h3><p className="muted">{countries.find((country) => country.code === job.country_code)?.name || job.country_code} · {displayValue(job.location)}</p></div><span className="job-match-score" title={job.match.reasons.join(' · ')}>{job.match.score}% প্রোফাইল মিল</span></div><p><strong>{displayValue(job.employer)}</strong> · {displayValue(job.occupation)}</p><p>{displayValue(job.description)}</p>{job.match.reasons.length > 0 && <ul className="job-match-reasons">{job.match.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}<p className="muted">প্রকাশিত {dateLabel(job.posted_at)}</p>{job.apply_url && <a href={job.apply_url} target="_blank" rel="noreferrer">আবেদনের পৃষ্ঠা ↗</a>}</article>)}</div> : <div className="empty-state"><span>🔎</span><h3>{hasVerifiedJobs ? 'এই অনুসন্ধানে কোনো যাচাইকৃত চাকরি মেলেনি' : 'এখনো কোনো যাচাইকৃত সক্রিয় চাকরি নেই'}</h3><p>{hasVerifiedJobs ? 'অন্য পেশা বা দেশ দিয়ে চেষ্টা করুন, অথবা EURES-এ সরাসরি খুঁজুন।' : 'EURES-এর সরকারি চাকরি অনুসন্ধানে দেশ ও পেশা বেছে বর্তমান বিজ্ঞপ্তি দেখুন।'}</p><a className="button button-primary" href="https://europa.eu/eures/portal/jv-se/home?pageCode=find_a_job" target="_blank" rel="noreferrer">EURES-এ চাকরি খুঁজুন ↗</a></div>}
   </section>;
 }
 
@@ -404,7 +416,7 @@ const ADMIN_SECTIONS = {
     { name: "languages", label: "ভাষা", type: "csv" }, { name: "enabled", label: "দেশটি সক্রিয়", type: "checkbox", defaultValue: true },
   ] },
   country_access: { label: "জাতীয়তা প্রবেশ", key: "id", fields: [
-    { name: "country_code", label: "দেশের কোড", required: true }, { name: "nationality", label: "জাতীয়তা", defaultValue: "Bangladesh", required: true },
+    { name: "country_code", label: "দেশের কোড", required: true }, { name: "nationality", label: "জাতীয়তা", defaultValue: "Bangladesh", required: true }, { name: "residence_country", label: "বর্তমান বসবাসের দেশ (ANY = সবার জন্য)", defaultValue: "ANY", required: true },
     { name: "access_status", label: "প্রবেশের অবস্থা", type: "select", options: [["open", "খোলা"], ["limited", "সীমিত"], ["closed", "বন্ধ"], ["unknown", "তথ্য নেই"]], defaultValue: "unknown" },
     { name: "quota_included", label: "কোটা অন্তর্ভুক্ত", type: "checkbox" }, { name: "restrictions", label: "সীমাবদ্ধতা / নোট", type: "textarea" },
     { name: "apply_where", label: "কোথায় আবেদন করবেন", type: "textarea" }, { name: "documents_note", label: "নথির নোট", type: "textarea" },
@@ -412,7 +424,7 @@ const ADMIN_SECTIONS = {
     { name: "last_verified", label: "সর্বশেষ যাচাই", type: "date" },
   ] },
   visa_routes: { label: "ভিসা পথ", key: "id", fields: [
-    { name: "country_code", label: "দেশের কোড", required: true }, { name: "route_type", label: "রুটের ধরন", required: true },
+    { name: "country_code", label: "দেশের কোড", required: true }, { name: "nationality", label: "জাতীয়তা (ANY = সবার জন্য)", defaultValue: "ANY", required: true }, { name: "residence_country", label: "বর্তমান বসবাসের দেশ (ANY = সবার জন্য)", defaultValue: "ANY", required: true }, { name: "route_type", label: "রুটের ধরন", required: true },
     { name: "title", label: "শিরোনাম", required: true }, { name: "summary", label: "সারাংশ", type: "textarea" },
     { name: "requirements", label: "শর্ত (JSON)", type: "json", defaultValue: "{}" }, { name: "documents", label: "নথি (JSON)", type: "json", defaultValue: "[]" },
     { name: "fees", label: "ফি (JSON)", type: "json", defaultValue: "[]" }, { name: "steps", label: "ধাপ (JSON)", type: "json", defaultValue: "[]" },
@@ -466,18 +478,36 @@ function rowTitle(resource, row) {
   if (resource === "country_access") return `${row.country_code} · ${row.nationality}`;
   return row.title || row.name || row.id;
 }
-function AdBanner() {
+function AdBanner({ selectedTab }) {
   const [ads, setAds] = useState([]);
+  const [settings, setSettings] = useState({ ads_enabled: false, banner_interval_minutes: 5, disable_on_legal_warnings: false });
+  const [display, setDisplay] = useState(false);
   useEffect(() => {
     let active = true;
-    fetch("/ads.json", { cache: "no-store" }).then((response) => response.ok ? response.json() : []).then((rows) => {
-      if (active && Array.isArray(rows)) setAds(rows);
-    }).catch(() => { if (active) setAds([]); });
+    Promise.all([
+      fetch("/ads.json", { cache: "no-store" }).then((response) => response.ok ? response.json() : []),
+      fetch("/ads-config.json", { cache: "no-store" }).then((response) => response.ok ? response.json() : null),
+    ]).then(([rows, config]) => {
+      if (!active) return;
+      setAds(Array.isArray(rows) ? rows : []);
+      if (config && typeof config === 'object') setSettings((current) => ({ ...current, ...config }));
+    }).catch(() => { if (active) { setAds([]); setSettings((current) => ({ ...current, ads_enabled: false })); } });
     return () => { active = false; };
   }, []);
   const today = new Date().toISOString().slice(0, 10);
+  const legalTabs = ['countries', 'compare', 'jobs', 'cv', 'cover', 'legal'];
+  const allowed = settings.ads_enabled && !(settings.disable_on_legal_warnings && legalTabs.includes(selectedTab));
   const visibleAds = ads.filter((ad) => ad.active && (!ad.start_date || ad.start_date <= today) && (!ad.end_date || ad.end_date >= today));
-  if (!visibleAds.length) return null;
+  useEffect(() => {
+    if (!allowed || !visibleAds.length) { setDisplay(false); return; }
+    let last = 0;
+    try { last = Number(window.localStorage.getItem('europe-work-guide:last-banner-shown') || 0); } catch {}
+    const interval = Math.max(1, Number(settings.banner_interval_minutes) || 5) * 60 * 1000;
+    if (Date.now() - last < interval) { setDisplay(false); return; }
+    try { window.localStorage.setItem('europe-work-guide:last-banner-shown', String(Date.now())); } catch {}
+    setDisplay(true);
+  }, [allowed, ads, settings.banner_interval_minutes, visibleAds.length]);
+  if (!display || !visibleAds.length) return null;
   return <section className="ads-banner" aria-label="বিজ্ঞাপন"><div className="ads-heading"><h2>আপনার জন্য</h2><span>বিজ্ঞাপন</span></div><div className="ads-grid">{visibleAds.map((ad) => <article className="ad-card" key={ad.id}>{ad.image_url && <img src={ad.image_url} alt="" loading="lazy" />}<div><span className="ad-label">স্পনসরকৃত</span><h3>{ad.title}</h3><p>{ad.body}</p>{/^https?:\/\//i.test(ad.href || "") && <a href={ad.href} target="_blank" rel="noreferrer">আরও জানুন ↗</a>}</div></article>)}</div></section>;
 }
 function AdminPanel() {
@@ -543,6 +573,9 @@ function AdminPanel() {
   };
   return <section className="panel admin-panel"><div className="panel-heading"><div><p className="eyebrow">কনটেন্ট পরিচালনা</p><h2>অ্যাডমিন প্যানেল</h2></div><span className="privacy-pill">🔒 অনুমোদিত অ্যাডমিন</span></div><p className="muted">দেশ, প্রবেশের তথ্য, ভিসা পথ, চাকরি ও বিজ্ঞাপন যোগ বা সম্পাদনা করুন। user-দের দেখাতে status “যাচাইকৃত” করুন।</p>
     <AdminDashboard />
+    <SourceManager />
+    <AdSettingsPanel />
+    <AdminMaintenance />
     <div className="admin-resource-tabs">{Object.entries(ADMIN_SECTIONS).map(([key, item]) => <button key={key} className={resource === key ? "active" : ""} onClick={() => setResource(key)}>{item.label}</button>)}</div>
     <form className="admin-form" onSubmit={save}><div className="section-heading"><h3>{editingKey ? `${section.label} সম্পাদনা` : `নতুন ${section.label} যোগ করুন`}</h3>{editingKey && <button type="button" className="button button-light small" onClick={() => { setEditingKey(null); setForm(freshAdminForm(section)); }}>বাতিল</button>}</div>
       <div className="admin-fields">{section.fields.map((field) => <Field key={field.name} label={field.label}>{field.type === "textarea" || field.type === "json" ? <textarea required={field.required} rows={field.type === "json" ? 5 : 3} value={form[field.name] ?? ""} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })} /> : field.type === "select" ? <select required={field.required} value={form[field.name] ?? ""} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })}><option value="">নির্বাচন করুন</option>{field.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select> : field.type === "checkbox" ? <input className="checkbox-input" type="checkbox" checked={Boolean(form[field.name])} onChange={(e) => setForm({ ...form, [field.name]: e.target.checked })} /> : <input type={field.type === "csv" ? "text" : field.type || "text"} required={field.required} value={form[field.name] ?? ""} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })} />}</Field>)}</div>
@@ -619,8 +652,8 @@ export default function App() {
   const signOut = async () => { const { error } = await supabase.auth.signOut(); if (error) setProfileError('লগ আউট করা যায়নি। আবার চেষ্টা করুন।'); else setSelectedTab('profile'); };
   if (!isSupabaseConfigured) return <div className="app-shell"><Header /><main className="config-error"><span>⚙</span><h1>অ্যাপ সেটআপ অসম্পূর্ণ</h1><p><code>app/.env</code> ফাইলে <code>VITE_SUPABASE_URL</code> এবং <code>VITE_SUPABASE_ANON_KEY</code> যোগ করে আবার চালু করুন।</p></main><Notice /></div>;
   return <div className="app-shell"><Header user={user} onSignOut={signOut} />
-    {authLoading ? <main className="loading-state">অ্যাকাউন্ট যাচাই হচ্ছে…</main> : !user ? <AuthPanel /> : <main className="workspace"><TabNav selected={selectedTab} onSelect={setSelectedTab} isAdmin={isAdmin} /><AdBanner />{profileError && <div className="page-error"><ErrorMessage>{profileError}</ErrorMessage></div>}{profileLoading ? <div className="loading-state panel">প্রোফাইল লোড হচ্ছে…</div> : <>
-      {selectedTab === 'profile' && <ProfileForm key={user.id} profile={profile} userId={user.id} onSaved={setProfile} />}
+    {authLoading ? <main className="loading-state">অ্যাকাউন্ট যাচাই হচ্ছে…</main> : !user ? <AuthPanel /> : <main className="workspace"><TabNav selected={selectedTab} onSelect={setSelectedTab} isAdmin={isAdmin} /><AdBanner selectedTab={selectedTab} />{profileError && <div className="page-error"><ErrorMessage>{profileError}</ErrorMessage></div>}{profileLoading ? <div className="loading-state panel">প্রোফাইল লোড হচ্ছে…</div> : <>
+      {selectedTab === 'profile' && <ProfileForm key={user.id} profile={profile} userId={user.id} onSaved={setProfile} countries={countries} />}
       {selectedTab === 'countries' && <CountriesPanel profile={profile} />}
       {selectedTab === 'compare' && <ComparisonPanel countries={countries} profile={profile} />}
       {selectedTab === 'jobs' && <JobsPanel profile={profile} countries={countries} />}

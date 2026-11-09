@@ -1,3 +1,14 @@
+export function isApplicableToProfile(profile, record) {
+  const normalize = (value) => typeof value === 'string' ? value.trim().toLocaleLowerCase() : '';
+  const wantedNationality = normalize(profile?.nationality);
+  const wantedResidence = normalize(profile?.current_residence_country);
+  const recordNationality = normalize(record?.nationality);
+  const recordResidence = normalize(record?.residence_country);
+  const nationalityMatches = !recordNationality || recordNationality === 'any' || recordNationality === wantedNationality;
+  const residenceMatches = !recordResidence || recordResidence === 'any' || recordResidence === wantedResidence;
+  return nationalityMatches && residenceMatches;
+}
+
 const LANGUAGE_ORDER = { A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, C2: 6, NATIVE: 7 };
 
 function ageOnDate(birthDate, today = new Date()) {
@@ -83,4 +94,38 @@ export function matchRoute(profile, route) {
     }
   }
   return checks;
+}
+
+export function scoreJobMatch(profile, job) {
+  const normalize = (value) => typeof value === 'string' ? value.trim().toLocaleLowerCase() : '';
+  const title = normalize(job?.title);
+  const occupation = normalize(job?.occupation);
+  const text = [job?.title, job?.occupation, job?.description, job?.employer, job?.location].filter(Boolean).join(' ').toLocaleLowerCase();
+  const desired = Array.isArray(profile?.desired_occupations) ? profile.desired_occupations.map(normalize).filter(Boolean) : [];
+  const skills = Array.isArray(profile?.skills) ? [...new Set(profile.skills.map(normalize).filter(Boolean))] : [];
+  const targetCountries = Array.isArray(profile?.target_countries) ? profile.target_countries.map(normalize) : [];
+  const experience = Array.isArray(profile?.experience) ? profile.experience : [];
+  let score = 0;
+  const reasons = [];
+
+  const occupationMatch = desired.some((item) => item === occupation || item === title);
+  if (occupationMatch) { score += 40; reasons.push('পছন্দের পেশার সঙ্গে সরাসরি মিল'); }
+  else if (desired.length) reasons.push('পেশার নাম হুবহু মেলেনি');
+
+  const matchedSkills = skills.filter((skill) => text.includes(skill));
+  if (skills.length) {
+    const skillPoints = Math.round(30 * matchedSkills.length / Math.min(skills.length, 3));
+    score += Math.min(30, skillPoints);
+    reasons.push(`বিজ্ঞাপনের লেখায় ${matchedSkills.length}/${skills.length}টি প্রোফাইল দক্ষতার শব্দ পাওয়া গেছে`);
+  }
+
+  if (targetCountries.includes(normalize(job?.country_code))) { score += 20; reasons.push('আপনার পছন্দের গন্তব্য দেশ'); }
+  else if (targetCountries.length) reasons.push('এই দেশটি আপনার পছন্দের দেশের তালিকায় নেই');
+
+  const experienceText = experience.map((item) => [item?.title, item?.description].filter(Boolean).join(' ')).join(' ').toLocaleLowerCase();
+  const roleWords = [occupation, title].filter(Boolean).flatMap((value) => value.split(/[^\p{L}\p{N}]+/u)).filter((word) => word.length >= 3);
+  const experienceMatch = roleWords.some((word) => experienceText.includes(word));
+  if (experienceMatch) { score += 10; reasons.push('কাজের অভিজ্ঞতার লেখার সঙ্গে মিল'); }
+
+  return { score: Math.min(100, score), reasons, matchedSkills, totalSkills: skills.length, occupationMatch, targetCountryMatch: targetCountries.includes(normalize(job?.country_code)) };
 }

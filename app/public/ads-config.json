@@ -1,0 +1,8 @@
+{
+  "ads_enabled": true,
+  "banner_interval_minutes": 5,
+  "disable_on_legal_warnings": false,
+  "popunder_enabled": false,
+  "popunder_interval_minutes": 30,
+  "popunder_max_per_session": 0
+}

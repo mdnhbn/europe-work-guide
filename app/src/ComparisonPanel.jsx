@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './lib/supabase.js';
+import { isApplicableToProfile } from './lib/matching.js';
 
 const STATUS = { open: 'খোলা', limited: 'সীমিত', closed: 'বন্ধ', unknown: 'যাচাইকৃত তথ্য নেই' };
 function show(value) {
@@ -15,7 +16,7 @@ function CountryColumn({ country, data, loading }) {
   const routes = data?.routes || [];
   const jobs = data?.jobs || [];
   return <article className="compare-column">
-    <div className="compare-country-heading"><span className="compare-country-code">{country.code}</span><div><h3>{country.name}</h3><small>জাতীয়তা অনুযায়ী তথ্য</small></div></div>
+    <div className="compare-country-heading"><span className="compare-country-code">{country.code}</span><div><h3>{country.name}</h3><small>জাতীয়তা ও বসবাসের দেশ অনুযায়ী তথ্য</small></div></div>
     <section className="compare-block"><h4>প্রবেশের অবস্থা</h4><span className={`status-badge ${access?.access_status || 'unknown'}`}>{STATUS[access?.access_status || 'unknown']}</span>
       {access ? <><p>{show(access.restrictions)}</p><p><strong>আবেদন:</strong> {show(access.apply_where)}</p><p><strong>সর্বশেষ যাচাই:</strong> {show(access.last_verified)}</p>{access.official_url && <a href={access.official_url} target="_blank" rel="noreferrer">সরকারি সূত্র ↗</a>}</> : <p className="muted">এই জাতীয়তার জন্য যাচাইকৃত প্রবেশের তথ্য নেই। অনুমান করে অবস্থা দেখানো হয়নি।</p>}
     </section>
@@ -29,23 +30,26 @@ export default function ComparisonPanel({ countries, profile }) {
   const [data, setData] = useState({});
   const [loading, setLoading] = useState(false);
   const nationality = profile?.nationality?.trim() || 'Bangladesh';
+  const residence = profile?.current_residence_country?.trim() || 'Bangladesh';
   useEffect(() => {
     let active = true;
     const selected = [...new Set([left, right].filter(Boolean))];
     setLoading(true);
     Promise.all(selected.map(async code => {
       const [accessResult, routeResult, jobResult] = await Promise.all([
-        supabase.from('country_access').select('*').eq('country_code', code).eq('nationality', nationality).eq('review_status', 'verified').limit(1),
+        supabase.from('country_access').select('*').eq('country_code', code).in('nationality', [nationality, 'ANY']).eq('review_status', 'verified'),
         supabase.from('visa_routes').select('*').eq('country_code', code).eq('review_status', 'verified').order('last_verified', { ascending: false }),
         supabase.from('jobs').select('*').eq('country_code', code).eq('review_status', 'verified').eq('active', true).order('posted_at', { ascending: false }),
       ]);
       if (accessResult.error || routeResult.error || jobResult.error) throw new Error('তুলনার তথ্য লোড করা যায়নি। পরে আবার চেষ্টা করুন।');
-      return [code, { access: accessResult.data?.[0] || null, routes: routeResult.data || [], jobs: jobResult.data || [] }];
+      const eligibleAccess = (accessResult.data || []).filter((row) => isApplicableToProfile({ nationality, current_residence_country: residence }, row)).sort((a, b) => Number(b.residence_country === residence) - Number(a.residence_country === residence));
+      const eligibleRoutes = (routeResult.data || []).filter((route) => isApplicableToProfile({ nationality, current_residence_country: residence }, route));
+      return [code, { access: eligibleAccess[0] || null, routes: eligibleRoutes, jobs: jobResult.data || [] }];
     })).then(rows => { if (active) setData(Object.fromEntries(rows)); })
       .catch(() => { if (active) setData({}); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [left, right, nationality]);
+  }, [left, right, nationality, residence]);
   const leftCountry = countries.find(c => c.code === left);
   const rightCountry = countries.find(c => c.code === right);
   return <section className="panel comparison-panel">

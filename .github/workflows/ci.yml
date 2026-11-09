@@ -12,9 +12,13 @@ permissions:
 
 jobs:
   frontend:
-    name: Frontend build and matching tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    name: Frontend build and matching tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,15 +33,23 @@ jobs:
         run: npm ci
       - name: Run matching unit tests
         working-directory: app
-        run: node --test tests/matching.test.js
+        run: npm test
+      - name: Validate serverless API syntax
+        run: |
+          node --check api/admin.js
+          node --check api/account-delete.js
       - name: Build production frontend
         working-directory: app
         run: npm run build
 
   scraper:
-    name: Python scraper syntax validation
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    name: Python scraper syntax validation (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
