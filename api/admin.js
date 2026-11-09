@@ -1,4 +1,5 @@
-const { randomUUID } = require("crypto");
+const { randomUUID, createCipheriv, createDecipheriv, randomBytes } = require("crypto");
+const { gzipSync, gunzipSync } = require("zlib");
 
 const TABLES = {
   countries: {
@@ -78,6 +79,99 @@ async function readAds() {
   const ads = JSON.parse(Buffer.from(file.content.replace(/\s/g, ""), "base64").toString("utf8"));
   if (!Array.isArray(ads)) throw new Error("Ad data file must contain a JSON array");
   return { ads, sha: file.sha, repo, branch, token };
+}
+
+
+const BACKUP_TABLES = [
+  { name: "profiles", conflict: "user_id" },
+  { name: "countries", conflict: "code" },
+  { name: "country_access", conflict: "country_code,nationality" },
+  { name: "visa_routes", conflict: "id" },
+  { name: "jobs", conflict: "id" },
+  { name: "source_pages", conflict: "url" },
+];
+
+function backupKey() {
+  const value = env("BACKUP_ENCRYPTION_KEY");
+  if (!value) throw new Error("BACKUP_ENCRYPTION_KEY is not configured");
+  let key;
+  if (/^[a-f0-9]{64}$/i.test(value)) key = Buffer.from(value, "hex");
+  else {
+    try { key = Buffer.from(value, "base64"); } catch { key = Buffer.alloc(0); }
+  }
+  if (key.length !== 32) throw new Error("BACKUP_ENCRYPTION_KEY must be a 32-byte base64 or 64-character hex key");
+  return key;
+}
+
+function encryptBackup(payload) {
+  const key = backupKey();
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const compressed = gzipSync(Buffer.from(JSON.stringify(payload), "utf8"));
+  const ciphertext = Buffer.concat([cipher.update(compressed), cipher.final()]);
+  return {
+    format: "europe-work-guide-encrypted-backup",
+    version: 1,
+    algorithm: "AES-256-GCM+gzip",
+    created_at: new Date().toISOString(),
+    iv: iv.toString("base64"),
+    tag: cipher.getAuthTag().toString("base64"),
+    data: ciphertext.toString("base64"),
+  };
+}
+
+function decryptBackup(bundle) {
+  backupKey();
+  if (!bundle || bundle.format !== "europe-work-guide-encrypted-backup" || bundle.version !== 1 ||
+      typeof bundle.iv !== "string" || typeof bundle.tag !== "string" || typeof bundle.data !== "string") {
+    throw new Error("Backup file format is not supported");
+  }
+  if (Buffer.byteLength(bundle.data, "base64") > 3 * 1024 * 1024) throw new Error("Backup file exceeds the 3 MB restore limit");
+  const decipher = createDecipheriv("aes-256-gcm", backupKey(), Buffer.from(bundle.iv, "base64"));
+  decipher.setAuthTag(Buffer.from(bundle.tag, "base64"));
+  const compressed = Buffer.concat([decipher.update(Buffer.from(bundle.data, "base64")), decipher.final()]);
+  const payload = JSON.parse(gunzipSync(compressed).toString("utf8"));
+  if (payload?.export_version !== "1.0" || !payload.tables || typeof payload.tables !== "object") throw new Error("Backup payload structure is invalid");
+  return payload;
+}
+
+async function fetchAllRows(table) {
+  const base = supabaseBase();
+  const rows = [];
+  for (let start = 0; start < 100000; start += 1000) {
+    const response = await fetch(`${base}/rest/v1/${table}?select=*`, {
+      headers: { ...serviceHeaders(), Range: `${start}-${start + 999}` },
+    });
+    if (!response.ok) throw new Error(`Could not export table: ${table}`);
+    const page = await response.json();
+    if (!Array.isArray(page)) throw new Error(`Unexpected response while exporting table: ${table}`);
+    rows.push(...page);
+    if (page.length < 1000) return rows;
+  }
+  throw new Error(`Table ${table} exceeds the 100,000-row backup safety limit`);
+}
+
+async function insertAudit(user, action, entity, beforeValue = null, afterValue = null) {
+  const base = supabaseBase();
+  if (!base || !env("SUPABASE_SERVICE_KEY")) return;
+  try {
+    const response = await fetch(`${base}/rest/v1/admin_audit_log`, {
+      method: "POST",
+      headers: serviceHeaders("return=minimal"),
+      body: JSON.stringify({
+        admin_user_id: user.id,
+        admin_email: user.email || null,
+        action,
+        entity,
+        before_json: beforeValue,
+        after_json: afterValue,
+        created_at: new Date().toISOString(),
+      }),
+    });
+    if (!response.ok) console.error("Admin audit write failed; apply database/migrations/20261109_admin_backup_audit.sql");
+  } catch {
+    console.error("Admin audit write failed; audit migration may be missing");
+  }
 }
 
 function validUrl(value, allowEmpty = true) {
@@ -188,30 +282,104 @@ module.exports = async function adminApi(req, res) {
       return res.status(200).json({ deleted: true, id, commit: result.commit });
     }
 
+    if (resource === "backup") {
+      if (!env("SUPABASE_SERVICE_KEY")) return sendError(res, 503, "Admin database is not configured");
+      if (req.method !== "POST") return sendError(res, 405, "Backup actions must use POST");
+      const action = String(req.body?.action || "");
+      if (action === "export") {
+        const tables = {};
+        for (const item of BACKUP_TABLES) tables[item.name] = await fetchAllRows(item.name);
+        const ads = await readAds().catch(() => ({ ads: [] }));
+        const payload = {
+          export_version: "1.0",
+          exported_at: new Date().toISOString(),
+          counts: Object.fromEntries([...Object.entries(tables).map(([name, rows]) => [name, rows.length]), ["ads", ads.ads.length]]),
+          tables,
+          ads: ads.ads,
+          note: "This backup contains personal profile data and is encrypted. Store it securely.",
+        };
+        const backup = encryptBackup(payload);
+        await insertAudit(user, "backup_export", "full_backup", null, { counts: payload.counts, encrypted: true });
+        return res.status(200).json(backup);
+      }
+      if (action === "preview" || action === "restore") {
+        let payload;
+        try { payload = decryptBackup(req.body?.backup); }
+        catch (error) { return sendError(res, 400, error.message || "Backup could not be decrypted"); }
+        const counts = {};
+        for (const item of BACKUP_TABLES) {
+          if (!Array.isArray(payload.tables[item.name])) return sendError(res, 400, `Backup is missing the ${item.name} table`);
+          counts[item.name] = payload.tables[item.name].length;
+        }
+        counts.ads = Array.isArray(payload.ads) ? payload.ads.length : 0;
+        if (action === "preview") {
+          const current = {};
+          for (const item of BACKUP_TABLES) {
+            try { current[item.name] = (await fetchAllRows(item.name)).length; }
+            catch { current[item.name] = null; }
+          }
+          return res.status(200).json({ valid: true, export_version: payload.export_version, exported_at: payload.exported_at, counts, current_counts: current, modes: ["merge", "empty_database_restore"] });
+        }
+        const mode = String(req.body?.mode || "");
+        if (req.body?.confirm !== true || !["merge", "empty_database_restore"].includes(mode)) return sendError(res, 400, "Explicit confirmation and a valid restore mode are required");
+        const current = {};
+        for (const item of BACKUP_TABLES) current[item.name] = await fetchAllRows(item.name);
+        if (mode === "empty_database_restore" && Object.values(current).some((rows) => rows.length > 0)) {
+          return sendError(res, 409, "Full restore is allowed only when all supported database tables are empty. No data was changed.");
+        }
+        let restored = 0;
+        for (const item of BACKUP_TABLES) {
+          const rows = payload.tables[item.name];
+          if (!rows.length) continue;
+          for (let offset = 0; offset < rows.length; offset += 100) {
+            const batch = rows.slice(offset, offset + 100);
+            const response = await fetch(`${supabaseBase()}/rest/v1/${item.name}?on_conflict=${encodeURIComponent(item.conflict)}`, {
+              method: "POST",
+              headers: serviceHeaders("return=minimal,resolution=merge-duplicates"),
+              body: JSON.stringify(batch),
+            });
+            if (!response.ok) return sendError(res, 502, `Restore stopped while importing ${item.name}; earlier batches may already have been imported`);
+            restored += batch.length;
+          }
+        }
+        if (Array.isArray(payload.ads)) await saveAds(payload.ads);
+        await insertAudit(user, "backup_restore", "full_backup", null, { mode, counts, restored_rows: restored });
+        return res.status(200).json({ restored: true, mode, counts, restored_rows: restored, message: "Restore completed. Review the imported data before public approval." });
+      }
+      return sendError(res, 400, "Unknown backup action");
+    }
+
+    if (resource === "admin_audit_log" && req.method === "GET") {
+      const response = await fetch(`${supabaseBase()}/rest/v1/admin_audit_log?select=id,admin_user_id,admin_email,action,entity,before_json,after_json,created_at&order=created_at.desc&limit=200`, { headers: serviceHeaders() });
+      if (!response.ok) return sendError(res, 503, "Audit log is unavailable; apply the admin backup/audit migration");
+      return res.status(200).json(await response.json());
+    }
+
     if (resource === "ads") {
-      if (req.method === "DELETE") {
+      if (req.method === "GET") {
+        const result = await readAds();
+        return res.status(200).json(result.ads);
+      }
+      if (req.method !== "POST") return sendError(res, 405, "Method not allowed for ads");
+      if (!req.body || !Array.isArray(req.body.ads)) return sendError(res, 400, "Invalid advertisement data");
+      const result = await saveAds(req.body.ads);
+      await insertAudit(user, "ads_update", "ads", null, { count: result.ads.length, commit: result.commit });
+      return res.status(200).json(result);
+    }
+
+    if (req.method === "DELETE") {
       const deletable = new Set(["country_access", "visa_routes", "jobs"]);
       if (!deletable.has(resource)) return sendError(res, 403, "This resource cannot be deleted through the admin API");
       const input = req.body && typeof req.body === "object" ? req.body : {};
       const id = String(input.id || "").trim();
       if (!id || id.length > 160) return sendError(res, 400, "A valid record id is required");
-      const base = supabaseBase();
-      if (!base || !env("SUPABASE_SERVICE_KEY")) return sendError(res, 500, "Admin database is not configured");
-      const deleteUrl = `${base}/rest/v1/${resource}?id=eq.${encodeURIComponent(id)}`;
+      const deleteUrl = `${supabaseBase()}/rest/v1/${resource}?id=eq.${encodeURIComponent(id)}`;
       const deleted = await fetch(deleteUrl, { method: "DELETE", headers: serviceHeaders("return=representation") });
       if (!deleted.ok) return sendError(res, 502, "Could not delete the record");
       const rows = await deleted.json().catch(() => []);
       if (!Array.isArray(rows) || rows.length === 0) return sendError(res, 404, "Record not found");
+      await insertAudit(user, "delete", resource, rows[0], null);
       return res.status(200).json({ deleted: true, id });
-    }
-
-    if (req.method === "GET") {
-        const result = await readAds();
-        return res.status(200).json(result.ads);
-      }
-      if (!req.body || !Array.isArray(req.body.ads)) return sendError(res, 400, "Invalid advertisement data");
-      const result = await saveAds(req.body.ads);
-      return res.status(200).json(result);
     }
 
     const config = TABLES[resource];
@@ -253,7 +421,9 @@ module.exports = async function adminApi(req, res) {
     });
     if (!response.ok) return sendError(res, 502, "Could not save admin data");
     const rows = await response.json();
-    return res.status(200).json(Array.isArray(rows) ? rows[0] || null : rows);
+    const saved = Array.isArray(rows) ? rows[0] || null : rows;
+    await insertAudit(user, method === "PATCH" ? "update" : "create_or_upsert", resource, null, saved);
+    return res.status(200).json(saved);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected admin error";
     const status = message.includes("Provide an ad") || message.includes("Invalid ad") || message.includes("Each ad") || message.includes("Ad links") ? 400 : 500;
