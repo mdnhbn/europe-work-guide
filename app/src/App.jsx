@@ -12,7 +12,7 @@ import AdminDashboard from './AdminDashboard.jsx';
 import AdminMaintenance from './AdminMaintenance.jsx';
 
 const EMPTY_PROFILE = {
-  full_name: '', contact_email: '', phone: '', address: '', birth_date: '', nationality: 'Bangladesh', education: [], experience: [],
+  full_name: '', contact_email: '', phone: '', address: '', birth_date: '', nationality: 'Bangladesh', current_residence_country: 'Bangladesh', target_countries: [], education: [], experience: [],
   skills: [], languages: [], desired_occupations: [],
 };
 const NOTICE = 'এটা শুধু তথ্যের জন্য। আবেদনের আগে অফিশিয়াল সাইটে যাচাই করুন। টাকার বিনিময়ে ভিসার প্রতিশ্রুতি দেওয়া কাউকে বিশ্বাস করবেন না।';
@@ -209,7 +209,7 @@ function RepeatableList({ title, entries, fields, onChange, emptyEntry }) {
     {entries.map((entry, index) => <div className="repeat-item" key={`${title}-${index}`}>{fields.map((field) => <Field key={field.name} label={field.label}><input type={field.type || 'text'} min={field.type === 'number' ? '0' : undefined} step={field.type === 'number' ? '0.5' : undefined} value={entry[field.name] ?? ''} placeholder={field.placeholder || ''} onChange={(e) => onChange(entries.map((item, i) => i === index ? { ...item, [field.name]: e.target.value } : item))} /></Field>)}<button type="button" className="remove-button" onClick={() => onChange(entries.filter((_, i) => i !== index))}>মুছুন</button></div>)}
   </section>;
 }
-function ProfileForm({ profile, userId, onSaved }) {
+function ProfileForm({ profile, userId, onSaved, countries = [] }) {
   const [form, setForm] = useState(profile);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -218,12 +218,13 @@ function ProfileForm({ profile, userId, onSaved }) {
   const setValue = (key, value) => { setForm((current) => ({ ...current, [key]: value })); setSaved(false); };
   const updateList = (key, value) => { setValue(key, value); };
   const completenessValues = [
-    form.full_name, form.contact_email, form.phone, form.birth_date, form.nationality,
+    form.full_name, form.contact_email, form.phone, form.birth_date, form.nationality, form.current_residence_country,
     Array.isArray(form.education) && form.education.some((item) => item.degree || item.institution),
     Array.isArray(form.experience) && form.experience.some((item) => item.title || item.employer || item.description),
     Array.isArray(form.skills) && form.skills.length > 0,
     Array.isArray(form.languages) && form.languages.some((item) => item.name && item.level),
     Array.isArray(form.desired_occupations) && form.desired_occupations.length > 0,
+    Array.isArray(form.target_countries) && form.target_countries.length > 0,
   ];
   const completeness = Math.round(completenessValues.filter((value) => Array.isArray(value) ? value.length > 0 : typeof value === 'string' ? value.trim().length > 0 : Boolean(value)).length / completenessValues.length * 100);
   const submit = async (event) => {
@@ -236,6 +237,8 @@ function ProfileForm({ profile, userId, onSaved }) {
       address: (form.address || '').trim(),
       birth_date: form.birth_date || null,
       nationality: (form.nationality || '').trim() || 'Bangladesh',
+      current_residence_country: (form.current_residence_country || '').trim() || 'Bangladesh',
+      target_countries: Array.isArray(form.target_countries) ? form.target_countries.filter(Boolean) : [],
       education: (Array.isArray(form.education) ? form.education : []).map((item) => ({ degree: item.degree || '', institution: item.institution || '', year: item.year || '' })),
       experience: (Array.isArray(form.experience) ? form.experience : []).map((item) => ({ title: item.title || '', employer: item.employer || '', country: item.country || '', years: item.years === '' ? null : Number(item.years), description: item.description || '' })),
       skills: csvToArray(arrayToCsv(form.skills)),
@@ -252,7 +255,7 @@ function ProfileForm({ profile, userId, onSaved }) {
   };
   return <form className="panel profile-form" onSubmit={submit}><div className="panel-heading"><div><p className="eyebrow">আপনার তথ্য</p><h2>আমার প্রোফাইল</h2></div><span className="privacy-pill">🔒 শুধু আপনার অ্যাকাউন্ট</span></div><p className="muted">আপনার দেওয়া তথ্য দিয়ে ভিসা পথের শর্ত মিলিয়ে দেখা হবে। কোনো তথ্য অনুমান করা হবে না।</p>
     <section className="profile-completeness" aria-label="প্রোফাইল সম্পূর্ণতা"><div className="section-heading"><h3>প্রোফাইল সম্পূর্ণতা</h3><strong>{completeness}%</strong></div><div className="progress-track" role="progressbar" aria-valuenow={completeness} aria-valuemin="0" aria-valuemax="100"><span style={{ width: `${completeness}%` }} /></div><p className="muted">শিক্ষা, কাজের অভিজ্ঞতা, দক্ষতা, ভাষা ও পছন্দের পেশা যোগ করলে চাকরির মিল আরও উপযোগী হবে। অনুপস্থিত তথ্য অনুমান করে পূরণ করা হয় না।</p></section>
-    <div className="form-grid"><Field label="পুরো নাম"><input value={form.full_name || ''} onChange={(e) => setValue('full_name', e.target.value)} autoComplete="name" /></Field><Field label="জন্মতারিখ"><input type="date" value={form.birth_date || ''} onChange={(e) => setValue('birth_date', e.target.value)} /></Field><Field label="জাতীয়তা"><input value={form.nationality || ''} onChange={(e) => setValue('nationality', e.target.value)} placeholder="Bangladesh" /></Field><Field label="যোগাযোগের ইমেইল"><input type="email" autoComplete="email" value={form.contact_email || ''} onChange={(e) => setValue('contact_email', e.target.value)} /></Field><Field label="ফোন নম্বর"><input type="tel" autoComplete="tel" value={form.phone || ''} onChange={(e) => setValue('phone', e.target.value)} /></Field><Field label="ঠিকানা"><input autoComplete="street-address" value={form.address || ''} onChange={(e) => setValue('address', e.target.value)} /></Field><Field label="পছন্দের পেশা" hint="কমা দিয়ে আলাদা করুন"><input value={arrayToCsv(form.desired_occupations)} onChange={(e) => setValue('desired_occupations', csvToArray(e.target.value))} placeholder="যেমন: Cook, Care worker" /></Field><Field label="দক্ষতা" hint="কমা দিয়ে আলাদা করুন"><input value={arrayToCsv(form.skills)} onChange={(e) => setValue('skills', csvToArray(e.target.value))} placeholder="যেমন: রান্না, ওয়েল্ডিং" /></Field></div>
+    <div className="form-grid"><Field label="পুরো নাম"><input value={form.full_name || ''} onChange={(e) => setValue('full_name', e.target.value)} autoComplete="name" /></Field><Field label="জন্মতারিখ"><input type="date" value={form.birth_date || ''} onChange={(e) => setValue('birth_date', e.target.value)} /></Field><Field label="জাতীয়তা"><input value={form.nationality || ''} onChange={(e) => setValue('nationality', e.target.value)} placeholder="Bangladesh" /></Field><Field label="বর্তমান বসবাসের দেশ"><select value={form.current_residence_country || 'Bangladesh'} onChange={(e) => setValue('current_residence_country', e.target.value)}>{[['Bangladesh','বাংলাদেশ'],['Malaysia','Malaysia'],['Singapore','Singapore'],['Switzerland','Switzerland'],['Saudi Arabia','Saudi Arabia'],['Qatar','Qatar'],['Oman','Oman'],['United States','United States'],['Italy','Italy'],['Germany','Germany'],['France','France'],['Portugal','Portugal'],['Spain','Spain'],['Poland','Poland'],['Netherlands','Netherlands']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></Field><Field label="যোগাযোগের ইমেইল"><input type="email" autoComplete="email" value={form.contact_email || ''} onChange={(e) => setValue('contact_email', e.target.value)} /></Field><Field label="ফোন নম্বর"><input type="tel" autoComplete="tel" value={form.phone || ''} onChange={(e) => setValue('phone', e.target.value)} /></Field><Field label="ঠিকানা"><input autoComplete="street-address" value={form.address || ''} onChange={(e) => setValue('address', e.target.value)} /></Field><Field label="পছন্দের দেশ" hint="একাধিক দেশ নির্বাচন করতে Ctrl/Command ধরে রাখুন"><select multiple size={4} value={form.target_countries || []} onChange={(e) => setValue('target_countries', Array.from(e.target.selectedOptions, (option) => option.value))}>{countries.filter((country) => country.enabled !== false).map((country) => <option key={country.code} value={country.code}>{country.name}</option>)}</select></Field><Field label="পছন্দের পেশা" hint="কমা দিয়ে আলাদা করুন"><input value={arrayToCsv(form.desired_occupations)} onChange={(e) => setValue('desired_occupations', csvToArray(e.target.value))} placeholder="যেমন: Cook, Care worker" /></Field><Field label="দক্ষতা" hint="কমা দিয়ে আলাদা করুন"><input value={arrayToCsv(form.skills)} onChange={(e) => setValue('skills', csvToArray(e.target.value))} placeholder="যেমন: রান্না, ওয়েল্ডিং" /></Field></div>
     <RepeatableList title="শিক্ষা" entries={form.education || []} onChange={(v) => updateList('education', v)} emptyEntry={{ degree: '', institution: '', year: '' }} fields={[{ name: 'degree', label: 'ডিগ্রি / সনদ' }, { name: 'institution', label: 'প্রতিষ্ঠান' }, { name: 'year', label: 'বছর', type: 'number' }]} />
     <RepeatableList title="কাজের অভিজ্ঞতা" entries={form.experience || []} onChange={(v) => updateList('experience', v)} emptyEntry={{ title: '', employer: '', country: '', years: '', description: '' }} fields={[{ name: 'title', label: 'পদ / কাজ' }, { name: 'employer', label: 'প্রতিষ্ঠান' }, { name: 'country', label: 'দেশ' }, { name: 'years', label: 'বছর', type: 'number' }, { name: 'description', label: 'কাজের বিবরণ' }]} />
     <RepeatableList title="ভাষা" entries={form.languages || []} onChange={(v) => updateList('languages', v)} emptyEntry={{ name: '', level: '' }} fields={[{ name: 'name', label: 'ভাষা' }]} />
@@ -586,6 +589,8 @@ export default function App() {
           address: '',
           birth_date: null,
           nationality: 'Bangladesh',
+          current_residence_country: 'Bangladesh',
+          target_countries: [],
           education: [],
           experience: [],
           skills: [],
@@ -622,7 +627,7 @@ export default function App() {
   if (!isSupabaseConfigured) return <div className="app-shell"><Header /><main className="config-error"><span>⚙</span><h1>অ্যাপ সেটআপ অসম্পূর্ণ</h1><p><code>app/.env</code> ফাইলে <code>VITE_SUPABASE_URL</code> এবং <code>VITE_SUPABASE_ANON_KEY</code> যোগ করে আবার চালু করুন।</p></main><Notice /></div>;
   return <div className="app-shell"><Header user={user} onSignOut={signOut} />
     {authLoading ? <main className="loading-state">অ্যাকাউন্ট যাচাই হচ্ছে…</main> : !user ? <AuthPanel /> : <main className="workspace"><TabNav selected={selectedTab} onSelect={setSelectedTab} isAdmin={isAdmin} /><AdBanner />{profileError && <div className="page-error"><ErrorMessage>{profileError}</ErrorMessage></div>}{profileLoading ? <div className="loading-state panel">প্রোফাইল লোড হচ্ছে…</div> : <>
-      {selectedTab === 'profile' && <ProfileForm key={user.id} profile={profile} userId={user.id} onSaved={setProfile} />}
+      {selectedTab === 'profile' && <ProfileForm key={user.id} profile={profile} userId={user.id} onSaved={setProfile} countries={countries} />}
       {selectedTab === 'countries' && <CountriesPanel profile={profile} />}
       {selectedTab === 'compare' && <ComparisonPanel countries={countries} profile={profile} />}
       {selectedTab === 'jobs' && <JobsPanel profile={profile} countries={countries} />}
