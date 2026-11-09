@@ -508,7 +508,7 @@ function AdBanner({ selectedTab }) {
     setDisplay(true);
   }, [allowed, ads, settings.banner_interval_minutes, visibleAds.length]);
   if (!display || !visibleAds.length) return null;
-  return <section className="ads-banner" aria-label="বিজ্ঞাপন"><div className="ads-heading"><h2>আপনার জন্য</h2><span>বিজ্ঞাপন</span></div><div className="ads-grid">{visibleAds.map((ad) => <article className="ad-card" key={ad.id}>{ad.image_url && <img src={ad.image_url} alt="" loading="lazy" />}<div><span className="ad-label">স্পনসরকৃত</span><h3>{ad.title}</h3><p>{ad.body}</p>{/^https?:\\/\\//i.test(ad.href || "") && <a href={ad.href} target="_blank" rel="noreferrer">আরও জানুন ↗</a>}</div></article>)}</div></section>;
+  return <section className="ads-banner" aria-label="বিজ্ঞাপন"><div className="ads-heading"><h2>আপনার জন্য</h2><span>বিজ্ঞাপন</span></div><div className="ads-grid">{visibleAds.map((ad) => <article className="ad-card" key={ad.id}>{ad.image_url && <img src={ad.image_url} alt="" loading="lazy" />}<div><span className="ad-label">স্পনসরকৃত</span><h3>{ad.title}</h3><p>{ad.body}</p>{/^https?:\/\//i.test(ad.href || "") && <a href={ad.href} target="_blank" rel="noreferrer">আরও জানুন ↗</a>}</div></article>)}</div></section>;
 }
 function AdminPanel() {
   const [resource, setResource] = useState("countries");
