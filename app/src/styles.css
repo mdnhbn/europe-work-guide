@@ -317,3 +317,8 @@ input::placeholder { color: #a0aea8; }
 .admin-record-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .button-danger{background:#fff0f0;color:#9b3030;border:1px solid #f2cccc}
 .button-danger:hover{background:#ffe4e4}
+
+.account-danger-zone{margin-top:22px;padding:17px;border:1px solid #f0d1d1;background:#fffafa;border-radius:13px;display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center}
+.account-danger-zone strong{color:#8f2929}.account-danger-zone p{font-size:12px;line-height:1.75;color:#7d5555;margin:6px 0 0}
+.account-danger-zone .message{grid-column:1/-1;margin:0}
+@media(max-width:700px){.account-danger-zone{grid-template-columns:1fr}.account-danger-zone button{width:100%}}

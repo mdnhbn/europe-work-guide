@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import { supabase } from './lib/supabase.js';
 
 const SECTIONS = [
   { id: 'privacy', title: 'গোপনীয়তা ও তথ্য ব্যবহার', body: [
     'আপনার দেওয়া প্রোফাইলের তথ্য চাকরি ও ভিসা-সংক্রান্ত প্রকাশিত তথ্যের সঙ্গে মিল দেখাতে ব্যবহার করা হয়। প্রোফাইলে শুধু প্রয়োজনীয় তথ্য দিন।',
     'এই অ্যাপ Supabase-ভিত্তিক অ্যাকাউন্ট ও ডেটা স্টোরেজ ব্যবহার করে। অ্যাকাউন্টের ইমেইল, যোগাযোগের তথ্য এবং আপনার দেওয়া শিক্ষা, অভিজ্ঞতা, দক্ষতা ও ভাষার তথ্য সেবা চালানোর জন্য প্রক্রিয়াকৃত হয়।',
     'এই সংস্করণে পাসপোর্টের ছবি বা জাতীয় পরিচয়পত্রের স্ক্যান আপলোড করবেন না। অন্য কারও ব্যক্তিগত তথ্য অনুমতি ছাড়া দেবেন না।',
-    'নিজের প্রোফাইল তথ্য JSON হিসেবে ডাউনলোড করতে নিচের বোতাম ব্যবহার করুন। সম্পূর্ণ অ্যাকাউন্ট মুছে ফেলার অনুরোধের জন্য সাইট পরিচালকের প্রকাশিত সহায়তা-যোগাযোগ ব্যবহার করুন; এই ইন্টারফেসে এখনো স্বয়ংক্রিয় অ্যাকাউন্ট-মুছে ফেলার সুবিধা নেই।',
+    'নিজের প্রোফাইল তথ্য JSON হিসেবে ডাউনলোড করতে নিচের বোতাম ব্যবহার করুন। অ্যাকাউন্ট মুছে ফেলার সুবিধা সার্ভার-side Supabase admin key কনফিগারেশনের উপর নির্ভরশীল।',
   ]},
   { id: 'accuracy', title: 'তথ্যের নির্ভুলতা ও ভিসা-সংক্রান্ত সতর্কতা', body: [
     'এই সাইট আইনি পরামর্শ, ভিসা অনুমোদন বা চাকরির নিশ্চয়তা দেয় না। নিয়ম, ফি, কোটার অবস্থা ও সময়সীমা পরিবর্তিত হতে পারে।',
@@ -22,6 +23,8 @@ const SECTIONS = [
 ];
 export default function LegalPanel({ profile, user }) {
   const [message, setMessage] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const exportProfile = () => {
     const payload = { exported_at: new Date().toISOString(), account: { email: user?.email || '', id: user?.id || '' }, profile };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
@@ -31,9 +34,31 @@ export default function LegalPanel({ profile, user }) {
     document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
     setMessage('আপনার প্রোফাইল JSON ফাইল ডাউনলোড শুরু হয়েছে। ফাইলটি ব্যক্তিগতভাবে সংরক্ষণ করুন।');
   };
+  const deleteAccount = async () => {
+    const accepted = window.confirm('আপনার অ্যাকাউন্ট ও সংযুক্ত প্রোফাইল স্থায়ীভাবে মুছে ফেলার অনুরোধ করছেন। এই কাজ ফিরিয়ে আনা যাবে না। আগে প্রোফাইল JSON ডাউনলোড করে নিন। এগোবেন?');
+    if (!accepted) return;
+    setDeleting(true); setDeleteError(''); setMessage('');
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data.session?.access_token) throw new Error('আপনার সেশন যাচাই করা যায়নি। আবার লগ ইন করুন।');
+      const response = await fetch('/api/account-delete', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${data.session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'অ্যাকাউন্ট মুছে ফেলা যায়নি।');
+      await supabase.auth.signOut();
+      setMessage('অ্যাকাউন্ট মুছে ফেলার অনুরোধ সম্পন্ন হয়েছে।');
+      window.location.reload();
+    } catch (error) {
+      setDeleteError(error.message || 'অ্যাকাউন্ট মুছে ফেলা যায়নি।');
+    } finally { setDeleting(false); }
+  };
   return <section className="panel legal-panel"><div className="panel-heading"><div><p className="eyebrow">স্বচ্ছতা ও ব্যবহারকারীর নিরাপত্তা</p><h2>গোপনীয়তা, শর্ত ও সতর্কতা</h2></div><span className="privacy-pill">আপনার তথ্য</span></div>
     <p className="muted">নিচের নীতিগুলো সাইটের বর্তমান কার্যকারিতা ব্যাখ্যা করে। প্রকাশের আগে সাইট পরিচালকের যোগাযোগ ও আইনগত তথ্য দিয়ে চূড়ান্ত পর্যালোচনা প্রয়োজন।</p>
     <div className="form-actions"><button type="button" className="button button-primary" onClick={exportProfile}>আমার প্রোফাইল JSON ডাউনলোড</button>{message && <p className="message success" role="status">{message}</p>}</div>
+    <section className="account-danger-zone"><div><strong>অ্যাকাউন্ট মুছে ফেলুন</strong><p>এটি স্থায়ী কাজ। মুছে ফেলার আগে আপনার প্রোফাইল JSON ডাউনলোড করুন। সার্ভার-side Supabase admin key কনফিগার করা না থাকলে অনুরোধ ব্যর্থ হবে এবং অ্যাকাউন্ট মুছে গেছে বলে দেখানো হবে না।</p></div><button type="button" className="button button-danger" onClick={deleteAccount} disabled={deleting}>{deleting ? 'অনুরোধ চলছে…' : 'অ্যাকাউন্ট স্থায়ীভাবে মুছুন'}</button>{deleteError && <p className="message error" role="alert">{deleteError}</p>}</section>
     <div className="legal-sections">{SECTIONS.map(section => <details key={section.id} open={section.id === 'privacy'}><summary>{section.title}</summary><div>{section.body.map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div></details>)}</div>
   </section>;
 }
