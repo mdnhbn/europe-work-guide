@@ -9,6 +9,7 @@ import ComparisonPanel from './ComparisonPanel.jsx';
 import CoverLetterPanel from './CoverLetterPanel.jsx';
 import LegalPanel from './LegalPanel.jsx';
 import AdminDashboard from './AdminDashboard.jsx';
+import AdminMaintenance from './AdminMaintenance.jsx';
 
 const EMPTY_PROFILE = {
   full_name: '', contact_email: '', phone: '', address: '', birth_date: '', nationality: 'Bangladesh', education: [], experience: [],
@@ -543,6 +544,7 @@ function AdminPanel() {
   };
   return <section className="panel admin-panel"><div className="panel-heading"><div><p className="eyebrow">কনটেন্ট পরিচালনা</p><h2>অ্যাডমিন প্যানেল</h2></div><span className="privacy-pill">🔒 অনুমোদিত অ্যাডমিন</span></div><p className="muted">দেশ, প্রবেশের তথ্য, ভিসা পথ, চাকরি ও বিজ্ঞাপন যোগ বা সম্পাদনা করুন। user-দের দেখাতে status “যাচাইকৃত” করুন।</p>
     <AdminDashboard />
+    <AdminMaintenance />
     <div className="admin-resource-tabs">{Object.entries(ADMIN_SECTIONS).map(([key, item]) => <button key={key} className={resource === key ? "active" : ""} onClick={() => setResource(key)}>{item.label}</button>)}</div>
     <form className="admin-form" onSubmit={save}><div className="section-heading"><h3>{editingKey ? `${section.label} সম্পাদনা` : `নতুন ${section.label} যোগ করুন`}</h3>{editingKey && <button type="button" className="button button-light small" onClick={() => { setEditingKey(null); setForm(freshAdminForm(section)); }}>বাতিল</button>}</div>
       <div className="admin-fields">{section.fields.map((field) => <Field key={field.name} label={field.label}>{field.type === "textarea" || field.type === "json" ? <textarea required={field.required} rows={field.type === "json" ? 5 : 3} value={form[field.name] ?? ""} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })} /> : field.type === "select" ? <select required={field.required} value={form[field.name] ?? ""} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })}><option value="">নির্বাচন করুন</option>{field.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select> : field.type === "checkbox" ? <input className="checkbox-input" type="checkbox" checked={Boolean(form[field.name])} onChange={(e) => setForm({ ...form, [field.name]: e.target.checked })} /> : <input type={field.type === "csv" ? "text" : field.type || "text"} required={field.required} value={form[field.name] ?? ""} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })} />}</Field>)}</div>
