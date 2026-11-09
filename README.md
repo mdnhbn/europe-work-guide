@@ -26,7 +26,13 @@ These changes extend the existing Supabase/Vercel app rather than replacing its 
 
 The admin panel can edit country source-registry JSON files in `scrapers/countries/`, inspect recent `source_pages` fetch metadata, request a manual scraper run through GitHub Actions, and control the global banner switch/frequency. The token used for source editing needs repository Contents read/write; manual run also needs Actions: write. Banner ads use localStorage frequency control. Pop-under and arbitrary third-party script injection intentionally remain disabled. Source URLs must use HTTPS. This registry currently covers only configured country files; a working connector must still be implemented for each source type.
 
-Verified job cards now show an explainable heuristic profile-match score based on exact preferred-occupation matches, skill words appearing in the job text, target-country preference, and experience wording. This is not an AI hiring prediction or a visa eligibility assessment. Because the current database/job connector does not yet supply structured required skills, salary, language levels, deadlines, or employment types for every job, those fields are not fabricated.
+Verified job cards now show an explainable heuristic profile-match score based on exact preferred-occupation matches, skill words appearing in the job text, target-country preference, and experience wording. This is not an AI hiring prediction or a visa eligibility assessment. A structured job schema and admin form are being added in a separate migration-backed change. The official job connector is still incomplete, so no salary, language, qualification, or deadline values are fabricated.
+
+## Structured job fields
+
+The migration `database/migrations/20261109_structured_jobs.sql` adds optional salary range/currency/period, application deadline, ISCO-08 unit-group code, language and qualification arrays, explicit expiry time, last-seen time, and a duplicate fingerprint. The admin API checks whether this migration is present: while it is absent, blank structured fields are omitted and attempts to save non-empty structured values return a clear migration-required error. Public job cards hide a listing once its stated application deadline or expiry time has passed; they do not delete records automatically.
+
+Language requirements use JSON arrays such as `[{"language":"Italian","level":"B1"}]`; qualifications use arrays of strings. Only enter details supported by the job's official source. This migration does not add a job scraping connector.
 
 ## Current-residence-aware matching
 

@@ -1,6 +1,7 @@
 const { randomUUID, createCipheriv, createDecipheriv, randomBytes } = require("crypto");
 const { gzipSync, gunzipSync } = require("zlib");
 const { hasAal2TotpSession } = require("./admin-auth");
+const { STRUCTURED_JOB_FIELDS, computeJobFingerprint, validateStructuredJob } = require("./job-schema");
 
 const TABLES = {
   countries: {
@@ -18,7 +19,7 @@ const TABLES = {
     order: "country_code.asc,title.asc",
   },
   jobs: {
-    fields: ["id", "country_code", "title", "occupation", "employer", "location", "description", "apply_url", "source_url", "posted_at", "active", "review_status"],
+    fields: ["id", "country_code", "title", "occupation", "employer", "location", "description", "apply_url", "source_url", "posted_at", "active", "review_status", ...STRUCTURED_JOB_FIELDS],
     order: "country_code.asc,posted_at.desc",
   },
 };
@@ -541,8 +542,33 @@ module.exports = async function adminApi(req, res) {
       return res.status(200).json(await response.json());
     }
 
-    const input = req.body && typeof req.body === "object" ? req.body.record : null;
+    let input = req.body && typeof req.body === "object" ? req.body.record : null;
     if (!input || typeof input !== "object" || Array.isArray(input)) return sendError(res, 400, "Invalid record");
+    if (resource === "jobs") {
+      const schemaCheck = await fetch(tableUrl + "?select=application_deadline&limit=0", { headers: serviceHeaders() });
+      if (!schemaCheck.ok) {
+        const hasStructuredValues = STRUCTURED_JOB_FIELDS.some((field) =>
+          input[field] !== null && input[field] !== undefined && input[field] !== ""
+        );
+        if (hasStructuredValues) return sendError(res, 409, "Apply the structured jobs migration before saving structured job fields");
+        input = Object.fromEntries(Object.entries(input).filter(([field]) => !STRUCTURED_JOB_FIELDS.includes(field)));
+      } else {
+        input = { ...input };
+        if (typeof input.salary_currency === "string") input.salary_currency = input.salary_currency.trim().toUpperCase() || null;
+        const validationError = validateStructuredJob(input);
+        if (validationError) return sendError(res, 400, validationError);
+        input.duplicate_fingerprint = computeJobFingerprint(input);
+        if (input.duplicate_fingerprint) {
+          const duplicateUrl = tableUrl + "?select=id&duplicate_fingerprint=eq." + encodeURIComponent(input.duplicate_fingerprint) + "&limit=1";
+          const duplicateResponse = await fetch(duplicateUrl, { headers: serviceHeaders() });
+          if (!duplicateResponse.ok) return sendError(res, 502, "Could not check for a duplicate job record");
+          const duplicates = await duplicateResponse.json();
+          if (Array.isArray(duplicates) && duplicates.some((row) => String(row.id) !== String(input.id || ""))) {
+            return sendError(res, 409, "A matching job record already exists");
+          }
+        }
+      }
+    }
     if (Object.keys(input).some((key) => !config.fields.includes(key))) return sendError(res, 400, "Record contains unsupported fields");
     if (input.review_status && !REVIEW_STATUSES.has(input.review_status)) return sendError(res, 400, "Invalid review status");
     if (resource === "country_access" && input.access_status && !ACCESS_STATUSES.has(input.access_status)) return sendError(res, 400, "Invalid access status");

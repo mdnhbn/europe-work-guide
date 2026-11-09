@@ -289,11 +289,12 @@ function RouteCard({ route, profile }) {
 }
 function CountryCard({ country, access, profile, expanded, data, loading, error, onToggle }) {
   const status = access?.access_status || 'unknown';
+  const activeJobs = (data?.jobs || []).filter(isCurrentJob);
   return <article className={`country-card ${expanded ? 'expanded' : ''}`}><button className="country-summary" onClick={onToggle} aria-expanded={expanded}><span className="country-icon" aria-hidden="true">{country.code === 'IT' ? '🇮🇹' : '🌍'}</span><span className="country-name"><strong>{country.name}</strong><small>{country.code}</small></span><span className={`status-badge ${status}`}>{STATUS_LABELS[status]}</span><span className="chevron" aria-hidden="true">{expanded ? '−' : '+'}</span></button>
     {expanded && <div className="country-content">{loading ? <p className="loading-line">তথ্য লোড হচ্ছে…</p> : error ? <ErrorMessage>{error}</ErrorMessage> : <>
       <section className="access-summary"><h3>জাতীয়তা অনুযায়ী প্রবেশের তথ্য</h3>{access ? <><p>{displayValue(access.restrictions)}</p><p><strong>কোথায় আবেদন করবেন:</strong> {displayValue(access.apply_where)}</p><p><strong>নথির নোট:</strong> {displayValue(access.documents_note)}</p><p><strong>সর্বশেষ যাচাই:</strong> {dateLabel(access.last_verified)}</p>{access.official_url && <a href={access.official_url} target="_blank" rel="noreferrer">সরকারি পৃষ্ঠা ↗</a>}</> : <p className="muted">যাচাইকৃত জাতীয়তা-সংক্রান্ত তথ্য নেই। এখানে প্রবেশের অবস্থা অনুমান করা হয়নি।</p>}</section>
       <section className="country-subsection"><div className="section-heading"><h3>ভিসার পথ</h3><span className="count-pill">{data?.routes?.length || 0}</span></div>{data?.routes?.length ? data.routes.map((route) => <RouteCard key={route.id} route={route} profile={profile} />) : <p className="muted empty-inline">এখনো কোনো যাচাইকৃত ভিসা পথ নেই।</p>}</section>
-      <section className="country-subsection"><div className="section-heading"><h3>চাকরির বিজ্ঞপ্তি</h3><span className="count-pill">{data?.jobs?.length || 0}</span></div>{data?.jobs?.length ? data.jobs.map((job) => <article className="job-card" key={job.id}><h4>{displayValue(job.title)}</h4><p><strong>{displayValue(job.employer)}</strong> · {displayValue(job.location)}</p><p>{displayValue(job.description)}</p><p className="muted">{displayValue(job.occupation)} · প্রকাশিত {dateLabel(job.posted_at)}</p>{job.apply_url && <a href={job.apply_url} target="_blank" rel="noreferrer">আবেদনের পৃষ্ঠা ↗</a>}</article>) : <p className="muted empty-inline">এখনো কোনো যাচাইকৃত সক্রিয় চাকরি নেই। <a href="https://eures.europa.eu/index_en?lang=en" target="_blank" rel="noreferrer">EURES-এর সরকারি পোর্টালে ইতালির কাজ খুঁজুন ↗</a></p>}</section>
+      <section className="country-subsection"><div className="section-heading"><h3>চাকরির বিজ্ঞপ্তি</h3><span className="count-pill">{activeJobs.length}</span></div>{activeJobs.length ? activeJobs.map((job) => <article className="job-card" key={job.id}><h4>{displayValue(job.title)}</h4><p><strong>{displayValue(job.employer)}</strong> · {displayValue(job.location)}</p><p>{displayValue(job.description)}</p><JobStructuredDetails job={job} /><p className="muted">{displayValue(job.occupation)} · প্রকাশিত {dateLabel(job.posted_at)}</p>{job.apply_url && <a href={job.apply_url} target="_blank" rel="noreferrer">আবেদনের পৃষ্ঠা ↗</a>}</article>) : <p className="muted empty-inline">এখনো কোনো যাচাইকৃত সক্রিয় চাকরি নেই। <a href="https://eures.europa.eu/index_en?lang=en" target="_blank" rel="noreferrer">EURES-এর সরকারি পোর্টালে ইতালির কাজ খুঁজুন ↗</a></p>}</section>
     </>}</div>}
   </article>;
 }
@@ -349,6 +350,32 @@ function CountriesPanel({ profile }) {
   </section>;
 }
 
+
+function isCurrentJob(job, nowMs = Date.now()) {
+  const localDate = new Date(nowMs);
+  const today = `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
+  if (job?.application_deadline && String(job.application_deadline).slice(0, 10) < today) return false;
+  const expiry = job?.expires_at ? Date.parse(job.expires_at) : Number.NaN;
+  return !Number.isFinite(expiry) || expiry > nowMs;
+}
+
+function JobStructuredDetails({ job }) {
+  const minimum = job.salary_min === null || job.salary_min === undefined ? null : Number(job.salary_min);
+  const maximum = job.salary_max === null || job.salary_max === undefined ? null : Number(job.salary_max);
+  const fmt = (value) => Number.isFinite(value) ? new Intl.NumberFormat('en', { maximumFractionDigits: 2 }).format(value) : '';
+  const salary = minimum !== null || maximum !== null
+    ? `${job.salary_currency || ''} ${minimum !== null && maximum !== null ? `${fmt(minimum)}–${fmt(maximum)}` : minimum !== null ? `from ${fmt(minimum)}` : `up to ${fmt(maximum)}`}`.trim()
+    : '';
+  const periodLabels = { hourly: 'ঘণ্টাপ্রতি', weekly: 'সাপ্তাহিক', monthly: 'মাসিক', annual: 'বার্ষিক' };
+  return <>
+    {salary && <p><strong>বেতন:</strong> {salary}{job.salary_period ? ` · ${periodLabels[job.salary_period] || job.salary_period}` : ''}</p>}
+    {job.application_deadline && <p><strong>আবেদনের শেষ তারিখ:</strong> {dateLabel(job.application_deadline)}</p>}
+    {job.isco08_code && <p><strong>ISCO-08:</strong> {job.isco08_code}</p>}
+    {Array.isArray(job.language_requirements) && job.language_requirements.length > 0 && <p><strong>ভাষা:</strong> {displayValue(job.language_requirements)}</p>}
+    {Array.isArray(job.qualification_requirements) && job.qualification_requirements.length > 0 && <p><strong>যোগ্যতা:</strong> {displayValue(job.qualification_requirements)}</p>}
+  </>;
+}
+
 function JobsPanel({ profile, countries }) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -370,7 +397,8 @@ function JobsPanel({ profile, countries }) {
   }, []);
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const visibleJobs = jobs.filter((job) => {
+  const currentJobs = jobs.filter((job) => isCurrentJob(job));
+  const visibleJobs = currentJobs.filter((job) => {
     if (countryCode && job.country_code !== countryCode) return false;
     if (!normalizedQuery) return true;
     const searchable = [job.title, job.occupation, job.employer, job.location, job.description].filter(Boolean).join(' ').toLocaleLowerCase();
@@ -381,13 +409,13 @@ function JobsPanel({ profile, countries }) {
   });
 
   const profileMatch = (job) => scoreJobMatch(profile, job).occupationMatch;
-  const hasVerifiedJobs = jobs.length > 0;
+  const hasVerifiedJobs = currentJobs.length > 0;
   return <section className="panel jobs-panel"><div className="panel-heading"><div><p className="eyebrow">প্রোফাইল-ভিত্তিক খোঁজ</p><h2>চাকরি খুঁজুন</h2></div><span className="count-pill">{loading ? '…' : `${visibleJobs.length}টি`}</span></div>
     <p className="muted">এখানে শুধু যাচাইকৃত ও সক্রিয় চাকরি দেখানো হয়। স্কোরটি প্রোফাইলের পেশা, দক্ষতার শব্দ, অভিজ্ঞতা ও পছন্দের দেশের ভিত্তিতে একটি আনুমানিক মিল—এটি নিয়োগ বা ভিসার যোগ্যতার নিশ্চয়তা নয়।</p>
     {desiredOccupations.length > 0 && <div className="job-suggestions"><span>আপনার পছন্দের পেশা:</span>{profile.desired_occupations.map((occupation, index) => <button type="button" className="suggestion-chip" key={`${occupation}-${index}`} onClick={() => setQuery(occupation)}>{occupation}</button>)}</div>}
     <div className="job-search-controls"><Field label="পেশা বা কীওয়ার্ড"><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="যেমন: Cook, Care worker" /></Field><Field label="দেশ"><select value={countryCode} onChange={(event) => setCountryCode(event.target.value)}><option value="">সব দেশ</option>{countries.map((country) => <option key={country.code} value={country.code}>{country.name}</option>)}</select></Field></div>
     <ErrorMessage>{error}</ErrorMessage>
-    {loading ? <div className="loading-state">যাচাইকৃত চাকরি খোঁজা হচ্ছে…</div> : error ? null : visibleJobs.length > 0 ? <div className="job-results">{visibleJobs.map((job) => <article className="job-card" key={job.id}><div className="job-title-row"><div><h3>{displayValue(job.title)}</h3><p className="muted">{countries.find((country) => country.code === job.country_code)?.name || job.country_code} · {displayValue(job.location)}</p></div><span className="job-match-score" title={job.match.reasons.join(' · ')}>{job.match.score}% প্রোফাইল মিল</span></div><p><strong>{displayValue(job.employer)}</strong> · {displayValue(job.occupation)}</p><p>{displayValue(job.description)}</p>{job.match.reasons.length > 0 && <ul className="job-match-reasons">{job.match.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}<p className="muted">প্রকাশিত {dateLabel(job.posted_at)}</p>{job.apply_url && <a href={job.apply_url} target="_blank" rel="noreferrer">আবেদনের পৃষ্ঠা ↗</a>}</article>)}</div> : <div className="empty-state"><span>🔎</span><h3>{hasVerifiedJobs ? 'এই অনুসন্ধানে কোনো যাচাইকৃত চাকরি মেলেনি' : 'এখনো কোনো যাচাইকৃত সক্রিয় চাকরি নেই'}</h3><p>{hasVerifiedJobs ? 'অন্য পেশা বা দেশ দিয়ে চেষ্টা করুন, অথবা EURES-এ সরাসরি খুঁজুন।' : 'EURES-এর সরকারি চাকরি অনুসন্ধানে দেশ ও পেশা বেছে বর্তমান বিজ্ঞপ্তি দেখুন।'}</p><a className="button button-primary" href="https://europa.eu/eures/portal/jv-se/home?pageCode=find_a_job" target="_blank" rel="noreferrer">EURES-এ চাকরি খুঁজুন ↗</a></div>}
+    {loading ? <div className="loading-state">যাচাইকৃত চাকরি খোঁজা হচ্ছে…</div> : error ? null : visibleJobs.length > 0 ? <div className="job-results">{visibleJobs.map((job) => <article className="job-card" key={job.id}><div className="job-title-row"><div><h3>{displayValue(job.title)}</h3><p className="muted">{countries.find((country) => country.code === job.country_code)?.name || job.country_code} · {displayValue(job.location)}</p></div><span className="job-match-score" title={job.match.reasons.join(' · ')}>{job.match.score}% প্রোফাইল মিল</span></div><p><strong>{displayValue(job.employer)}</strong> · {displayValue(job.occupation)}</p><p>{displayValue(job.description)}</p><JobStructuredDetails job={job} />{job.match.reasons.length > 0 && <ul className="job-match-reasons">{job.match.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}<p className="muted">প্রকাশিত {dateLabel(job.posted_at)}</p>{job.apply_url && <a href={job.apply_url} target="_blank" rel="noreferrer">আবেদনের পৃষ্ঠা ↗</a>}</article>)}</div> : <div className="empty-state"><span>🔎</span><h3>{hasVerifiedJobs ? 'এই অনুসন্ধানে কোনো যাচাইকৃত চাকরি মেলেনি' : 'এখনো কোনো যাচাইকৃত সক্রিয় চাকরি নেই'}</h3><p>{hasVerifiedJobs ? 'অন্য পেশা বা দেশ দিয়ে চেষ্টা করুন, অথবা EURES-এ সরাসরি খুঁজুন।' : 'EURES-এর সরকারি চাকরি অনুসন্ধানে দেশ ও পেশা বেছে বর্তমান বিজ্ঞপ্তি দেখুন।'}</p><a className="button button-primary" href="https://europa.eu/eures/portal/jv-se/home?pageCode=find_a_job" target="_blank" rel="noreferrer">EURES-এ চাকরি খুঁজুন ↗</a></div>}
   </section>;
 }
 
@@ -437,6 +465,13 @@ const ADMIN_SECTIONS = {
     { name: "occupation", label: "পেশা" }, { name: "employer", label: "প্রতিষ্ঠান" }, { name: "location", label: "কাজের স্থান" },
     { name: "description", label: "বিবরণ", type: "textarea" }, { name: "apply_url", label: "আবেদনের URL", type: "url" },
     { name: "source_url", label: "উৎস URL", type: "url" }, { name: "posted_at", label: "প্রকাশের সময়", type: "datetime-local" },
+    { name: "salary_min", label: "সর্বনিম্ন বেতন", type: "number", step: "0.01" }, { name: "salary_max", label: "সর্বোচ্চ বেতন", type: "number", step: "0.01" },
+    { name: "salary_currency", label: "বেতনের মুদ্রা কোড (যেমন EUR)" },
+    { name: "salary_period", label: "বেতনের সময়কাল", type: "select", options: [["", "উল্লেখ নেই"], ["hourly", "ঘণ্টাপ্রতি"], ["weekly", "সাপ্তাহিক"], ["monthly", "মাসিক"], ["annual", "বার্ষিক"]] },
+    { name: "application_deadline", label: "আবেদনের শেষ তারিখ", type: "date" }, { name: "expires_at", label: "বিজ্ঞপ্তির মেয়াদ শেষ (সময়সহ)", type: "datetime-local" },
+    { name: "isco08_code", label: "ISCO-08 unit-group code (৪ সংখ্যা)" },
+    { name: "language_requirements", label: "ভাষার শর্ত (JSON array)", type: "json", defaultValue: "[]" },
+    { name: "qualification_requirements", label: "যোগ্যতার শর্ত (JSON array)", type: "json", defaultValue: "[]" },
     { name: "active", label: "সক্রিয় বিজ্ঞপ্তি", type: "checkbox", defaultValue: true },
     { name: "review_status", label: "পর্যালোচনার অবস্থা", type: "select", options: [["pending", "পর্যালোচনাধীন"], ["verified", "যাচাইকৃত"]], defaultValue: "pending" },
   ] },
@@ -467,6 +502,7 @@ function adminRecordFromForm(section, form) {
   for (const field of section.fields) {
     const value = form[field.name];
     if (field.type === "checkbox") record[field.name] = Boolean(value);
+    else if (field.type === "number") record[field.name] = value === "" ? null : Number(value);
     else if (field.type === "csv") record[field.name] = csvToArray(value || "");
     else if (field.type === "json") record[field.name] = value?.trim() ? JSON.parse(value) : null;
     else if (field.type === "datetime-local") record[field.name] = value ? new Date(value).toISOString() : null;
@@ -579,7 +615,7 @@ function AdminPanel() {
     <AdminMaintenance />
     <div className="admin-resource-tabs">{Object.entries(ADMIN_SECTIONS).map(([key, item]) => <button key={key} className={resource === key ? "active" : ""} onClick={() => setResource(key)}>{item.label}</button>)}</div>
     <form className="admin-form" onSubmit={save}><div className="section-heading"><h3>{editingKey ? `${section.label} সম্পাদনা` : `নতুন ${section.label} যোগ করুন`}</h3>{editingKey && <button type="button" className="button button-light small" onClick={() => { setEditingKey(null); setForm(freshAdminForm(section)); }}>বাতিল</button>}</div>
-      <div className="admin-fields">{section.fields.map((field) => <Field key={field.name} label={field.label}>{field.type === "textarea" || field.type === "json" ? <textarea required={field.required} rows={field.type === "json" ? 5 : 3} value={form[field.name] ?? ""} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })} /> : field.type === "select" ? <select required={field.required} value={form[field.name] ?? ""} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })}><option value="">নির্বাচন করুন</option>{field.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select> : field.type === "checkbox" ? <input className="checkbox-input" type="checkbox" checked={Boolean(form[field.name])} onChange={(e) => setForm({ ...form, [field.name]: e.target.checked })} /> : <input type={field.type === "csv" ? "text" : field.type || "text"} required={field.required} value={form[field.name] ?? ""} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })} />}</Field>)}</div>
+      <div className="admin-fields">{section.fields.map((field) => <Field key={field.name} label={field.label}>{field.type === "textarea" || field.type === "json" ? <textarea required={field.required} rows={field.type === "json" ? 5 : 3} value={form[field.name] ?? ""} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })} /> : field.type === "select" ? <select required={field.required} value={form[field.name] ?? ""} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })}><option value="">নির্বাচন করুন</option>{field.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select> : field.type === "checkbox" ? <input className="checkbox-input" type="checkbox" checked={Boolean(form[field.name])} onChange={(e) => setForm({ ...form, [field.name]: e.target.checked })} /> : <input type={field.type === "csv" ? "text" : field.type || "text"} min={field.type === "number" ? "0" : undefined} step={field.type === "number" ? (field.step || "0.5") : undefined} required={field.required} value={form[field.name] ?? ""} onChange={(e) => setForm({ ...form, [field.name]: e.target.value })} />}</Field>)}</div>
       <ErrorMessage>{error}</ErrorMessage>{message && <p className="message success">{message}</p>}<div className="form-actions"><button className="button button-primary" disabled={busy}>{busy ? "সংরক্ষণ হচ্ছে…" : editingKey ? "পরিবর্তন সংরক্ষণ" : "যোগ করুন"}</button></div>
     </form>
     <section className="admin-records"><div className="section-heading"><h3>বর্তমান {section.label} তালিকা</h3><button className="button button-light small" onClick={() => loadItems(resource)}>রিফ্রেশ</button></div>{loading ? <p className="loading-line">তথ্য লোড হচ্ছে…</p> : error ? <ErrorMessage>{error}</ErrorMessage> : !items.length ? <p className="muted empty-inline">এখনো কোনো তথ্য নেই।</p> : items.map((item) => <article className="admin-record" key={item[section.key] || item.id}><div><strong>{rowTitle(resource, item)}</strong><small>{item.review_status || (item.active === false ? "নিষ্ক্রিয়" : item.enabled === false ? "বন্ধ" : resource === "ads" ? item.active ? "সক্রিয়" : "নিষ্ক্রিয়" : "সক্রিয়")}</small></div><div className="admin-record-actions"><button className="button button-light small" onClick={() => startEdit(item)}>সম্পাদনা</button>{(resource === "ads" || ["country_access", "visa_routes", "jobs"].includes(resource)) && <button type="button" className="button button-danger small" disabled={busy} onClick={() => removeRecord(item)}>মুছুন</button>}</div></article>)}</section>

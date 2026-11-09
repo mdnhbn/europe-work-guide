@@ -34,8 +34,9 @@ The project owner must add these server-only values in Vercel. Never put the ser
 
 1. `database/migrations/20261109_admin_backup_audit.sql` — creates the append-only audit log table.
 2. `database/migrations/20261109_residence_aware_matching.sql` — adds residence and target-country fields and the scoped uniqueness/indexes.
+3. `database/migrations/20261109_structured_jobs.sql` — adds optional salary, deadline, ISCO-08, language, qualification, expiry, and deduplication fields.
 
-The connected Supabase project currently reports only these applied migrations: `initial_schema`, `index_source_pages_country_code`, and `profiles_contact_details`. The audit and residence-aware migrations above are still unapplied; the live `public` table inventory also has no `admin_audit_log` table. Do not treat audit logging or residence/target-country persistence as operational until the owner applies the migrations and verifies the schema.
+The connected Supabase project currently reports only these applied migrations: `initial_schema`, `index_source_pages_country_code`, and `profiles_contact_details`. The audit, residence-aware, and structured-jobs migrations above are still unapplied; the live `public` table inventory also has no `admin_audit_log` table. Do not treat audit logging, residence/target-country persistence, or structured job fields as operational until the owner applies the migrations and verifies the schema.
 
 ## PRD gaps still open
 
@@ -43,7 +44,7 @@ The connected Supabase project currently reports only these applied migrations: 
 - The self-service account deletion endpoint exists, but live verification is blocked by the missing `SUPABASE_SERVICE_KEY`. Retention periods, scheduled deletion workflows, legal operator/contact details, and a production deletion verification remain open.
 - Scheduled encrypted daily backups, retention rotation, remote storage, and tested restore on an empty database are not yet operational.
 - The source scraper currently gathers official immigration pages for configured countries; it does not yet provide a complete official job connector, robust source health/retry dashboard, or all required country connectors.
-- The current database/job model does not yet provide complete structured salary, deadline, ISCO-08, language, qualification, expiry-cycle, and duplicate-fingerprint support.
+- The structured job migration, admin fields, validation, duplicate fingerprint, and public expiry filtering are ready in PR #9, but the migration is not applied. The official job connector, source-backed structured data, and automatic expiry processing remain open; job dates must come from the official source.
 - Italy-specific verified roadmaps for every required nationality/residence combination and all other country roadmaps remain incomplete; no visa rule should be inferred or fabricated.
 - CV country-specific conventions, PDF upload, generated-document version history, and ReportLab/WeasyPrint server-side PDF generation are incomplete; the current browser flow uses print-to-PDF.
 - Ad network script units, pop-under runtime, and full session frequency controls are not implemented. Current release uses safe banner ads, a global switch, banner interval, and optional suppression on warning pages.
