@@ -7,6 +7,7 @@ import { matchRoute } from './lib/matching.js';
 import { adminRequest } from './lib/adminApi.js';
 import ComparisonPanel from './ComparisonPanel.jsx';
 import CoverLetterPanel from './CoverLetterPanel.jsx';
+import LegalPanel from './LegalPanel.jsx';
 
 const EMPTY_PROFILE = {
   full_name: '', contact_email: '', phone: '', address: '', birth_date: '', nationality: 'Bangladesh', education: [], experience: [],
@@ -195,7 +196,7 @@ function AuthPanel() {
     </section></main>;
 }
 function TabNav({ selected, onSelect, isAdmin }) {
-  const tabs = [['profile', 'আমার প্রোফাইল'], ['countries', 'দেশ ও পথ'], ['compare', 'দেশ তুলনা'], ['jobs', 'চাকরি খুঁজুন'], ['cv', 'সিভি তৈরি'], ['cover', 'কভার লেটার'], ...(isAdmin ? [['admin', 'অ্যাডমিন']] : [])];
+  const tabs = [['profile', 'আমার প্রোফাইল'], ['countries', 'দেশ ও পথ'], ['compare', 'দেশ তুলনা'], ['jobs', 'চাকরি খুঁজুন'], ['cv', 'সিভি তৈরি'], ['cover', 'কভার লেটার'], ['legal', 'গোপনীয়তা ও শর্ত'], ...(isAdmin ? [['admin', 'অ্যাডমিন']] : [])];
   return <nav className="tabs main-tabs" aria-label="প্রধান মেনু">{tabs.map(([id, label]) => <button key={id} className={selected === id ? 'active' : ''} onClick={() => onSelect(id)}>{label}</button>)}</nav>;
 }function Field({ label, children, hint }) {
   return <label className="field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>;
@@ -595,6 +596,7 @@ export default function App() {
       {selectedTab === 'jobs' && <JobsPanel profile={profile} countries={countries} />}
       {selectedTab === 'cv' && <CvPanel profile={profile} countries={countries} />}
       {selectedTab === 'cover' && <CoverLetterPanel profile={profile} countries={countries} />}
+      {selectedTab === 'legal' && <LegalPanel profile={profile} user={user} />}
       {selectedTab === 'admin' && isAdmin && <AdminPanel />}
     </>}</main>}
     <Notice /><footer className="site-footer">সরকারি তথ্যের লিংক খুলে নিয়ম ও আবেদন পদ্ধতি নিজে যাচাই করুন।</footer>
