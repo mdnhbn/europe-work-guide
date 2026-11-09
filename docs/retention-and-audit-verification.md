@@ -2,9 +2,9 @@
 
 ## Account deletion
 
-`POST /api/account-delete` requires the signed-in user's bearer token and an explicit `{ "confirm": true }` body. The handler verifies the session with Supabase Auth, removes the linked profile, then deletes the Auth user. If the Auth deletion fails after the profile removal, it attempts to restore the profile and returns an error instead of claiming success.
+`POST /api/account-delete` requires the signed-in user's bearer token and an explicit `{ "confirm": true }` body. The handler verifies the session with Supabase Auth and deletes only the verified Auth user. The database removes the linked profile in the same operation via `profiles_user_id_fkey` (`ON DELETE CASCADE`). This constraint was confirmed on the connected project. Check the same constraint on staging before enabling deletion there.
 
-The endpoint has mock-based tests in `api/account-delete.test.js`. These validate request ordering and rollback handling without touching a real account. Live verification still requires the server-only `SUPABASE_SERVICE_KEY` in Vercel and a dedicated test account in a non-production Supabase project. Do not test deletion with a real user's production account.
+The endpoint has mock-based tests in `api/account-delete.test.js`. These validate identity verification, the Auth deletion request and failure handling without touching a real account. Live verification still requires the server-only `SUPABASE_SERVICE_KEY` in Vercel and a dedicated test account in a non-production Supabase project. Do not test deletion with a real user's production account.
 
 ## Retention policy
 

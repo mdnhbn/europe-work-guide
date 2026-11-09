@@ -17,36 +17,12 @@ module.exports = async function accountDelete(req, res) {
     if (!identity.ok) return fail(res, 401, "Your session could not be verified");
     const user = await identity.json();
     if (!user?.id) return fail(res, 401, "Your session could not be verified");
-    const profileResponse = await fetch(`${base}/rest/v1/profiles?user_id=eq.${encodeURIComponent(user.id)}&select=*`, {
-      headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
-    });
-    if (!profileResponse.ok) return fail(res, 502, "The linked profile could not be checked; account deletion was not started.");
-    const profiles = await profileResponse.json();
-    const profile = Array.isArray(profiles) ? profiles[0] : null;
-
-    if (profile) {
-      const profileDelete = await fetch(`${base}/rest/v1/profiles?user_id=eq.${encodeURIComponent(user.id)}`, {
-        method: "DELETE",
-        headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, Prefer: "return=minimal" },
-      });
-      if (!profileDelete.ok) return fail(res, 502, "The linked profile could not be deleted; the account remains active.");
-    }
-
+    // The profiles.user_id foreign key cascades on Auth user deletion.
     const deletion = await fetch(`${base}/auth/v1/admin/users/${encodeURIComponent(user.id)}`, {
       method: "DELETE",
       headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
     });
-    if (!deletion.ok) {
-      if (profile) {
-        const rollback = await fetch(`${base}/rest/v1/profiles?on_conflict=user_id`, {
-          method: "POST",
-          headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
-          body: JSON.stringify(profile),
-        }).catch(() => null);
-        if (!rollback?.ok) console.error("Account deletion rollback could not restore the profile row");
-      }
-      return fail(res, 502, "The account could not be deleted. The service attempted to restore linked profile data.");
-    }
+    if (!deletion.ok) return fail(res, 502, "The account could not be deleted.");
     return res.status(200).json({ deleted: true, message: "Account deletion request completed." });
   } catch {
     return fail(res, 502, "The account service could not be reached. Please try again later.");

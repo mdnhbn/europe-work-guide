@@ -59,32 +59,28 @@ test("requires explicit confirmation before calling Supabase", async () => {
   assert.equal(calls, 0);
 });
 
-test("deletes the linked profile and authenticated user after verifying identity", async () => {
+test("deletes only the verified Auth user so the database can cascade to its profile", async () => {
   const calls = [];
-  const queued = [response(200, { id: "user-1" }), response(200, []), response(204)];
+  const queued = [response(200, { id: "user-1" }), response(204)];
   global.fetch = async (url, options = {}) => { calls.push({ url: String(url), options }); return queued.shift(); };
 
   const result = await invoke(deletionRequest());
   assert.equal(result.statusCode, 200);
   assert.equal(result.body.deleted, true);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 2);
   assert.match(calls[0].url, /\/auth\/v1\/user$/);
-  assert.match(calls[1].url, /\/rest\/v1\/profiles\?user_id=eq\.user-1/);
-  assert.equal(calls[2].options.method, "DELETE");
-  assert.match(calls[2].url, /\/auth\/v1\/admin\/users\/user-1$/);
+  assert.equal(calls[1].options.method, "DELETE");
+  assert.match(calls[1].url, /\/auth\/v1\/admin\/users\/user-1$/);
 });
 
-test("attempts to restore profile data if Auth deletion fails", async () => {
-  const profile = { user_id: "user-1", display_name: "Test User" };
+test("reports an Auth deletion failure without writing to profiles", async () => {
   const calls = [];
-  const queued = [response(200, { id: "user-1" }), response(200, [profile]), response(204), response(502), response(204)];
-  global.fetch = async (url, options = {}) => { calls.push({ url: String(url), options }); return queued.shift(); };
+  const queued = [response(200, { id: "user-1" }), response(502)];
+  global.fetch = async (url) => { calls.push(String(url)); return queued.shift(); };
 
   const result = await invoke(deletionRequest());
   assert.equal(result.statusCode, 502);
-  assert.equal(result.body.error.includes("could not be deleted"), true);
-  assert.equal(calls[2].options.method, "DELETE");
-  assert.equal(calls[3].options.method, "DELETE");
-  assert.equal(calls[4].options.method, "POST");
-  assert.deepEqual(JSON.parse(calls[4].options.body), profile);
+  assert.match(result.body.error, /could not be deleted/);
+  assert.equal(calls.length, 2);
+  assert.equal(calls.some((url) => url.includes('/rest/')), false);
 });
