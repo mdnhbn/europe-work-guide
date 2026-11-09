@@ -17,37 +17,37 @@ This file tracks implementation evidence separately from items that still need c
 - [x] AES-256-GCM + gzip backup export, validation/preview, merge restore, and empty-database-only full restore code, with 3 MB transfer limit.
 - [x] Append-only admin audit log schema and API write/read code.
 - [x] Account deletion endpoint verifies the signed-in user and attempts to remove the linked profile.
-- [x] GitHub Actions matrix for Windows and Ubuntu; Linux frontend tests/build and Python syntax checks passed for the main commit. Windows frontend job was still finishing at the last status check.
-- [x] Vercel production build for commit `0ce093f2bd3dff6fc12bf1f00e0c8540b4b7d671` reached READY.
+- [x] GitHub Actions run `42567214613` for main commit `91c147ea82e3407a657b03feb030bfca2906eec9`: all four Ubuntu/Windows frontend, API syntax, and scraper validation jobs passed.
+- [x] Vercel production deployment for main commit `91c147ea82e3407a657b03feb030bfca2906eec9` reached READY; the production homepage returned HTTP 200 on 9 November 2026.
 
 ## Required before admin/backup/source features can operate live
 
-The Vercel project currently does **not** have these environment variable names configured:
+A live Vercel environment-variable inventory was checked on 9 November 2026 without decrypting secret values:
 
-- `SUPABASE_SERVICE_KEY` — Supabase service-role/secret key, server-side only.
-- `ADMIN_EMAILS` — comma-separated email allowlist for authorized admins.
-- `GITHUB_TOKEN` — repository-scoped token; source editing requires Contents read/write, manual scraper trigger additionally requires Actions: write.
+- `SUPABASE_SERVICE_KEY`, `ADMIN_EMAILS`, and `GITHUB_TOKEN` are absent from the project configuration for production, preview, and development.
+- A sensitive `BACKUP_ENCRYPTION_KEY` entry exists. Its value was not decrypted, so its format and usability have not been verified; confirm it is a valid 32-byte key before relying on backup export/restore.
+- The configured public Supabase URL and publishable key are present; they do not replace the missing server-side service key.
 
-`BACKUP_ENCRYPTION_KEY` has been created as a sensitive Vercel environment variable. Do not put it in client-side variables or commit it to Git.
+The project owner must add these server-only values in Vercel. Never put the service key, GitHub token, or backup key in client-side `VITE_*` variables or commit them to Git.
 
 ## Database migrations still need to be applied in Supabase SQL Editor
 
 1. `database/migrations/20261109_admin_backup_audit.sql` — creates the append-only audit log table.
 2. `database/migrations/20261109_residence_aware_matching.sql` — adds residence and target-country fields and the scoped uniqueness/indexes.
 
-These migrations have been committed, but were not applied to the live database by this workflow. Until the residence migration is applied, the UI will preserve basic profile saves where possible and show a warning that residence/target-country preferences are not persisted.
+The connected Supabase project currently reports only these applied migrations: `initial_schema`, `index_source_pages_country_code`, and `profiles_contact_details`. The audit and residence-aware migrations above are still unapplied; the live `public` table inventory also has no `admin_audit_log` table. Do not treat audit logging or residence/target-country persistence as operational until the owner applies the migrations and verifies the schema.
 
 ## PRD gaps still open
 
-- Mandatory per-admin TOTP 2FA is not yet implemented.
-- Production-ready account deletion/retention verification and legal operator/contact details remain incomplete.
+- Admin TOTP code is implemented on branch `codex/admin-totp-gate-2026-11-09`: the UI supports enrollment/challenge, and non-check admin APIs require a Supabase-validated `aal2` JWT with `amr` method `totp`. It is not in production yet; merge/deploy, configure the missing environment variables, enroll the allowlisted admin, and verify the live flow before marking it accepted.
+- The self-service account deletion endpoint exists, but live verification is blocked by the missing `SUPABASE_SERVICE_KEY`. Retention periods, scheduled deletion workflows, legal operator/contact details, and a production deletion verification remain open.
 - Scheduled encrypted daily backups, retention rotation, remote storage, and tested restore on an empty database are not yet operational.
 - The source scraper currently gathers official immigration pages for configured countries; it does not yet provide a complete official job connector, robust source health/retry dashboard, or all required country connectors.
 - The current database/job model does not yet provide complete structured salary, deadline, ISCO-08, language, qualification, expiry-cycle, and duplicate-fingerprint support.
 - Italy-specific verified roadmaps for every required nationality/residence combination and all other country roadmaps remain incomplete; no visa rule should be inferred or fabricated.
 - CV country-specific conventions, PDF upload, generated-document version history, and ReportLab/WeasyPrint server-side PDF generation are incomplete; the current browser flow uses print-to-PDF.
 - Ad network script units, pop-under runtime, and full session frequency controls are not implemented. Current release uses safe banner ads, a global switch, banner interval, and optional suppression on warning pages.
-- Admin 2FA, complete user management, privacy-safe analytics, full settings, and an end-to-end audit verification pass remain open.
+- Complete user management, privacy-safe analytics, full settings, and an end-to-end audit verification pass remain open. The audit migration is not applied, and the API currently logs audit-write failures without failing the underlying mutation.
 - The deployed architecture is currently React/Vite + Supabase + Vercel serverless APIs, rather than the PRD's preferred FastAPI/SQLAlchemy backend. A full migration to the PRD stack has not been done.
 
 ## Safe launch rule
