@@ -373,3 +373,9 @@ input::placeholder { color: #a0aea8; }
 .ad-setting-toggle input{width:20px;height:20px;flex-shrink:0;accent-color:var(--green)}
 .ad-setting-interval{max-width:320px;margin:16px 0}
 .ad-settings-panel .message.warning{background:#fff8e8;color:#81500a;border:1px solid #f2dfb3;border-radius:10px;padding:12px;font-size:12px;line-height:1.6}
+
+.official-country-sources > .muted { margin: 9px 0 18px; font-size: 13px; }
+.official-country-source-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 12px; }
+.official-country-source { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
+.official-country-source h3 { margin: 0 0 9px; font-size: 16px; }
+.official-country-source ol { display: grid; gap: 8px; margin: 0; padding-inline-start: 20px; font-size: 13px; line-height: 1.6; }
