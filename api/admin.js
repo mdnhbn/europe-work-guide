@@ -362,7 +362,7 @@ module.exports = async function adminApi(req, res) {
         method: "PUT",
         body: JSON.stringify({
           message: "Update ad display settings from admin panel",
-          content: Buffer.from(JSON.stringify(settings, null, 2) + "\\n", "utf8").toString("base64"),
+          content: Buffer.from(JSON.stringify(settings, null, 2) + "\n", "utf8").toString("base64"),
           branch: env("GITHUB_BRANCH") || "main",
           sha: current.sha,
         }),
