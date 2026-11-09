@@ -17,6 +17,8 @@ from urllib.robotparser import RobotFileParser
 
 import anthropic
 import requests
+
+from retry_policy import configure_retry_session
 from bs4 import BeautifulSoup
 from supabase import Client, create_client
 
@@ -361,7 +363,7 @@ def main() -> int:
     auto_publish = os.getenv("AUTO_PUBLISH", "false").strip().lower() == "true"
     db = create_client(supabase_url, service_key)
     anthropic_client = anthropic.Anthropic(api_key=anthropic_key)
-    session = requests.Session()
+    session = configure_retry_session(requests.Session())
     session.headers.update({"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"})
 
     failures = 0

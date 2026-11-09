@@ -158,6 +158,8 @@ input::placeholder { color: #a0aea8; }
 .empty-state h3 { margin: 8px 0 3px; color: var(--ink); }
 .empty-state p { margin: 0; font-size: 13px; }
 .loading-line { color: var(--muted); font-size: 13px; }
+.cv-heading { flex-wrap: wrap; }
+.cv-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .cv-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; padding: 18px; margin-bottom: 23px; background: #f6f9f7; border-radius: 12px; }
 .cv-controls .field:last-child { grid-column: 1 / -1; }
 .cv-paper { max-width: 780px; min-height: 800px; padding: 46px 54px; margin: 0 auto; border: 1px solid #dfe6e1; background: #fff; box-shadow: 0 4px 20px #1a34230c; color: #1b2924; font-family: 'DM Sans', 'Noto Sans Bengali', sans-serif; }
@@ -373,3 +375,9 @@ input::placeholder { color: #a0aea8; }
 .ad-setting-toggle input{width:20px;height:20px;flex-shrink:0;accent-color:var(--green)}
 .ad-setting-interval{max-width:320px;margin:16px 0}
 .ad-settings-panel .message.warning{background:#fff8e8;color:#81500a;border:1px solid #f2dfb3;border-radius:10px;padding:12px;font-size:12px;line-height:1.6}
+
+.official-country-sources > .muted { margin: 9px 0 18px; font-size: 13px; }
+.official-country-source-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 12px; }
+.official-country-source { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
+.official-country-source h3 { margin: 0 0 9px; font-size: 16px; }
+.official-country-source ol { display: grid; gap: 8px; margin: 0; padding-inline-start: 20px; font-size: 13px; line-height: 1.6; }

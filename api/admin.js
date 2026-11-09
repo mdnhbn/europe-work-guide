@@ -1,5 +1,8 @@
+const { supabaseServiceAuthHeaders } = require("../server/supabase-service");
 const { randomUUID, createCipheriv, createDecipheriv, randomBytes } = require("crypto");
 const { gzipSync, gunzipSync } = require("zlib");
+const { hasAal2TotpSession } = require("../server/admin-auth");
+const { STRUCTURED_JOB_FIELDS, computeJobFingerprint, validateStructuredJob } = require("../server/job-schema");
 
 const TABLES = {
   countries: {
@@ -17,7 +20,7 @@ const TABLES = {
     order: "country_code.asc,title.asc",
   },
   jobs: {
-    fields: ["id", "country_code", "title", "occupation", "employer", "location", "description", "apply_url", "source_url", "posted_at", "active", "review_status"],
+    fields: ["id", "country_code", "title", "occupation", "employer", "location", "description", "apply_url", "source_url", "posted_at", "active", "review_status", ...STRUCTURED_JOB_FIELDS],
     order: "country_code.asc,posted_at.desc",
   },
 };
@@ -57,8 +60,7 @@ async function authorizeAdmin(req) {
 function serviceHeaders(prefer) {
   const key = env("SUPABASE_SERVICE_KEY");
   return {
-    apikey: key,
-    Authorization: `Bearer ${key}`,
+    ...supabaseServiceAuthHeaders(key),
     "Content-Type": "application/json",
     ...(prefer ? { Prefer: prefer } : {}),
   };
@@ -82,10 +84,18 @@ async function readAds() {
 }
 
 
+const COUNTRY_ACCESS_CONFLICT_LEGACY = "country_code,nationality";
+const COUNTRY_ACCESS_CONFLICT_SCOPED = "country_code,nationality,residence_country";
+const RESIDENCE_BACKUP_FIELDS = {
+  profiles: ["current_residence_country", "target_countries"],
+  country_access: ["residence_country"],
+  visa_routes: ["nationality", "residence_country"],
+};
+
 const BACKUP_TABLES = [
   { name: "profiles", conflict: "user_id" },
   { name: "countries", conflict: "code" },
-  { name: "country_access", conflict: "country_code,nationality" },
+  { name: "country_access", conflict: COUNTRY_ACCESS_CONFLICT_LEGACY },
   { name: "visa_routes", conflict: "id" },
   { name: "jobs", conflict: "id" },
   { name: "source_pages", conflict: "url" },
@@ -152,9 +162,27 @@ async function fetchAllRows(table) {
   throw new Error(`Table ${table} exceeds the 100,000-row backup safety limit`);
 }
 
+async function getCountryAccessConflict() {
+  const response = await fetch(`${supabaseBase()}/rest/v1/country_access?select=residence_country&limit=0`, {
+    headers: serviceHeaders(),
+  });
+  if (response.ok) return COUNTRY_ACCESS_CONFLICT_SCOPED;
+  const error = await response.json().catch(() => null);
+  if (["42703", "PGRST204"].includes(error?.code) && /residence_country/i.test(error?.message || "")) {
+    return COUNTRY_ACCESS_CONFLICT_LEGACY;
+  }
+  throw new Error("Could not verify the residence matching schema. No data was changed.");
+}
+
+function hasResidenceBackupFields(tables) {
+  return Object.entries(RESIDENCE_BACKUP_FIELDS).some(([table, fields]) =>
+    tables[table].some((row) => row && fields.some((field) => Object.hasOwn(row, field)))
+  );
+}
+
 async function insertAudit(user, action, entity, beforeValue = null, afterValue = null) {
   const base = supabaseBase();
-  if (!base || !env("SUPABASE_SERVICE_KEY")) return;
+  if (!base || !env("SUPABASE_SERVICE_KEY")) return false;
   try {
     const response = await fetch(`${base}/rest/v1/admin_audit_log`, {
       method: "POST",
@@ -169,9 +197,19 @@ async function insertAudit(user, action, entity, beforeValue = null, afterValue 
         created_at: new Date().toISOString(),
       }),
     });
-    if (!response.ok) console.error("Admin audit write failed; apply database/migrations/20261109_admin_backup_audit.sql");
+    if (response.ok) return true;
+    console.error(`Admin audit write failed (${response.status}) for ${action}`);
   } catch {
-    console.error("Admin audit write failed; audit migration may be missing");
+    console.error(`Admin audit request failed for ${action}`);
+  }
+  return false;
+}
+
+class AuditUnavailableError extends Error {}
+
+async function requireAudit(user, action, entity, details = null) {
+  if (!await insertAudit(user, action, entity, null, details)) {
+    throw new AuditUnavailableError("Admin audit log is unavailable. The operation was not attempted. Check the audit migration and service key.");
   }
 }
 
@@ -194,14 +232,15 @@ async function githubApi(path, options = {}) {
 }
 
 async function readSourceConfigs() {
-  const directory = await githubApi("contents/scrapers/countries");
+  const branch = encodeURIComponent(env("GITHUB_BRANCH") || "main");
+  const directory = await githubApi(`contents/scrapers/countries?ref=${branch}`);
   if (!directory.ok) throw new Error("Could not list scraper source configurations");
   const entries = await directory.json();
   if (!Array.isArray(entries)) throw new Error("Source configuration directory is invalid");
   const files = entries.filter((item) => item.type === "file" && item.name.endsWith(".json"));
   const configs = [];
   for (const item of files) {
-    const response = await githubApi(`contents/scrapers/countries/${encodeURIComponent(item.name)}`);
+    const response = await githubApi(`contents/scrapers/countries/${encodeURIComponent(item.name)}?ref=${branch}`);
     if (!response.ok) throw new Error("Could not read a source configuration");
     const file = await response.json();
     let config;
@@ -299,7 +338,8 @@ module.exports = async function adminApi(req, res) {
 
     const url = new URL(req.url, "http://localhost");
     const resource = url.searchParams.get("resource");
-    if (resource === "check" && req.method === "GET") return res.status(200).json({ admin: true, email: user.email });
+    if (resource === "check" && req.method === "GET") return res.status(200).json({ admin: true, email: user.email, totp_verified: hasAal2TotpSession(token, user.id) });
+    if (!hasAal2TotpSession(token, user.id)) return sendError(res, 403, "Complete TOTP two-factor verification before accessing admin resources");
 
     if (resource === "dashboard" && req.method === "GET") {
       const base = supabaseBase();
@@ -358,6 +398,7 @@ module.exports = async function adminApi(req, res) {
         popunder_interval_minutes: 30,
         popunder_max_per_session: 0,
       };
+      await requireAudit(user, "ad_settings_update_requested", "ad-settings");
       const response = await githubApi("contents/app/public/ads-config.json", {
         method: "PUT",
         body: JSON.stringify({
@@ -379,7 +420,9 @@ module.exports = async function adminApi(req, res) {
       const current = await readAds();
       const next = current.ads.filter((item) => String(item.id) !== id);
       if (next.length === current.ads.length) return sendError(res, 404, "Advertisement not found");
+      await requireAudit(user, "ads_delete_requested", "ads", { id });
       const result = await saveAds(next);
+      await insertAudit(user, "ads_delete", "ads", null, { id, commit: result.commit });
       return res.status(200).json({ deleted: true, id, commit: result.commit });
     }
 
@@ -399,10 +442,11 @@ module.exports = async function adminApi(req, res) {
       const path = `contents/scrapers/countries/${encodeURIComponent(filename)}`;
       const body = {
         message: `Update official scraper sources for ${config.code}`,
-        content: Buffer.from(`${JSON.stringify(config, null, 2)}\\n`, "utf8").toString("base64"),
+        content: Buffer.from(`${JSON.stringify(config, null, 2)}\n`, "utf8").toString("base64"),
         branch,
         ...(existing ? { sha: existing.sha } : {}),
       };
+      await requireAudit(user, "source_config_update_requested", config.code);
       const response = await githubApi(path, { method: "PUT", body: JSON.stringify(body) });
       if (!response.ok) return sendError(res, 502, "Could not save source config; check GitHub Contents permission");
       const result = await response.json();
@@ -419,6 +463,7 @@ module.exports = async function adminApi(req, res) {
 
     if (resource === "scraper-run" && req.method === "POST") {
       const branch = env("GITHUB_BRANCH") || "main";
+      await requireAudit(user, "scraper_manual_run_requested", "scrape.yml", { branch });
       const response = await githubApi("actions/workflows/scrape.yml/dispatches", { method: "POST", body: JSON.stringify({ ref: branch }) });
       if (response.status === 204) {
         await insertAudit(user, "scraper_manual_run", "scrape.yml", null, { branch });
@@ -444,7 +489,7 @@ module.exports = async function adminApi(req, res) {
           note: "This backup contains personal profile data and is encrypted. Store it securely.",
         };
         const backup = encryptBackup(payload);
-        await insertAudit(user, "backup_export", "full_backup", null, { counts: payload.counts, encrypted: true });
+        await requireAudit(user, "backup_export", "full_backup", { counts: payload.counts, encrypted: true });
         return res.status(200).json(backup);
       }
       if (action === "preview" || action === "restore") {
@@ -467,18 +512,31 @@ module.exports = async function adminApi(req, res) {
         }
         const mode = String(req.body?.mode || "");
         if (req.body?.confirm !== true || !["merge", "empty_database_restore"].includes(mode)) return sendError(res, 400, "Explicit confirmation and a valid restore mode are required");
+        let countryAccessConflict = COUNTRY_ACCESS_CONFLICT_LEGACY;
+        const hasResidenceFields = hasResidenceBackupFields(payload.tables);
+        if (counts.country_access || hasResidenceFields) {
+          countryAccessConflict = await getCountryAccessConflict();
+          if (hasResidenceFields && countryAccessConflict === COUNTRY_ACCESS_CONFLICT_LEGACY) {
+            return sendError(res, 409, "Apply the residence-aware matching migration before restoring this backup. No data was changed.");
+          }
+        }
         const current = {};
         for (const item of BACKUP_TABLES) current[item.name] = await fetchAllRows(item.name);
         if (mode === "empty_database_restore" && Object.values(current).some((rows) => rows.length > 0)) {
           return sendError(res, 409, "Full restore is allowed only when all supported database tables are empty. No data was changed.");
         }
+        await requireAudit(user, "backup_restore_requested", "full_backup", { mode, counts });
         let restored = 0;
         for (const item of BACKUP_TABLES) {
-          const rows = payload.tables[item.name];
+          let rows = payload.tables[item.name];
           if (!rows.length) continue;
+          const conflict = item.name === "country_access" ? countryAccessConflict : item.conflict;
+          if (item.name === "country_access" && countryAccessConflict === COUNTRY_ACCESS_CONFLICT_SCOPED) {
+            rows = rows.map((row) => ({ ...row, residence_country: row.residence_country ?? "ANY" }));
+          }
           for (let offset = 0; offset < rows.length; offset += 100) {
             const batch = rows.slice(offset, offset + 100);
-            const response = await fetch(`${supabaseBase()}/rest/v1/${item.name}?on_conflict=${encodeURIComponent(item.conflict)}`, {
+            const response = await fetch(`${supabaseBase()}/rest/v1/${item.name}?on_conflict=${encodeURIComponent(conflict)}`, {
               method: "POST",
               headers: serviceHeaders("return=minimal,resolution=merge-duplicates"),
               body: JSON.stringify(batch),
@@ -507,7 +565,9 @@ module.exports = async function adminApi(req, res) {
       }
       if (req.method !== "POST") return sendError(res, 405, "Method not allowed for ads");
       if (!req.body || !Array.isArray(req.body.ads)) return sendError(res, 400, "Invalid advertisement data");
-      const result = await saveAds(req.body.ads);
+      const ads = normalizeAds(req.body.ads);
+      await requireAudit(user, "ads_update_requested", "ads", { count: ads.length });
+      const result = await saveAds(ads);
       await insertAudit(user, "ads_update", "ads", null, { count: result.ads.length, commit: result.commit });
       return res.status(200).json(result);
     }
@@ -519,6 +579,7 @@ module.exports = async function adminApi(req, res) {
       const id = String(input.id || "").trim();
       if (!id || id.length > 160) return sendError(res, 400, "A valid record id is required");
       const deleteUrl = `${supabaseBase()}/rest/v1/${resource}?id=eq.${encodeURIComponent(id)}`;
+      await requireAudit(user, "delete_requested", resource, { id });
       const deleted = await fetch(deleteUrl, { method: "DELETE", headers: serviceHeaders("return=representation") });
       if (!deleted.ok) return sendError(res, 502, "Could not delete the record");
       const rows = await deleted.json().catch(() => []);
@@ -539,8 +600,33 @@ module.exports = async function adminApi(req, res) {
       return res.status(200).json(await response.json());
     }
 
-    const input = req.body && typeof req.body === "object" ? req.body.record : null;
+    let input = req.body && typeof req.body === "object" ? req.body.record : null;
     if (!input || typeof input !== "object" || Array.isArray(input)) return sendError(res, 400, "Invalid record");
+    if (resource === "jobs") {
+      const schemaCheck = await fetch(tableUrl + "?select=application_deadline&limit=0", { headers: serviceHeaders() });
+      if (!schemaCheck.ok) {
+        const hasStructuredValues = STRUCTURED_JOB_FIELDS.some((field) =>
+          input[field] !== null && input[field] !== undefined && input[field] !== ""
+        );
+        if (hasStructuredValues) return sendError(res, 409, "Apply the structured jobs migration before saving structured job fields");
+        input = Object.fromEntries(Object.entries(input).filter(([field]) => !STRUCTURED_JOB_FIELDS.includes(field)));
+      } else {
+        input = { ...input };
+        if (typeof input.salary_currency === "string") input.salary_currency = input.salary_currency.trim().toUpperCase() || null;
+        const validationError = validateStructuredJob(input);
+        if (validationError) return sendError(res, 400, validationError);
+        input.duplicate_fingerprint = computeJobFingerprint(input);
+        if (input.duplicate_fingerprint) {
+          const duplicateUrl = tableUrl + "?select=id&duplicate_fingerprint=eq." + encodeURIComponent(input.duplicate_fingerprint) + "&limit=1";
+          const duplicateResponse = await fetch(duplicateUrl, { headers: serviceHeaders() });
+          if (!duplicateResponse.ok) return sendError(res, 502, "Could not check for a duplicate job record");
+          const duplicates = await duplicateResponse.json();
+          if (Array.isArray(duplicates) && duplicates.some((row) => String(row.id) !== String(input.id || ""))) {
+            return sendError(res, 409, "A matching job record already exists");
+          }
+        }
+      }
+    }
     if (Object.keys(input).some((key) => !config.fields.includes(key))) return sendError(res, 400, "Record contains unsupported fields");
     if (input.review_status && !REVIEW_STATUSES.has(input.review_status)) return sendError(res, 400, "Invalid review status");
     if (resource === "country_access" && input.access_status && !ACCESS_STATUSES.has(input.access_status)) return sendError(res, 400, "Invalid access status");
@@ -559,6 +645,8 @@ module.exports = async function adminApi(req, res) {
       method = "PATCH";
       prefer = "return=representation";
     }
+    const action = method === "PATCH" ? "update" : "create_or_upsert";
+    await requireAudit(user, `${action}_requested`, resource, { id: input.id || input.code || null });
     const response = await fetch(requestUrl, {
       method,
       headers: serviceHeaders(prefer),
@@ -567,9 +655,10 @@ module.exports = async function adminApi(req, res) {
     if (!response.ok) return sendError(res, 502, "Could not save admin data");
     const rows = await response.json();
     const saved = Array.isArray(rows) ? rows[0] || null : rows;
-    await insertAudit(user, method === "PATCH" ? "update" : "create_or_upsert", resource, null, saved);
+    await insertAudit(user, action, resource, null, saved);
     return res.status(200).json(saved);
   } catch (error) {
+    if (error instanceof AuditUnavailableError) return sendError(res, 503, error.message);
     const message = error instanceof Error ? error.message : "Unexpected admin error";
     const status = /Provide an ad|Invalid ad|Each ad|Ad links|Source config must|Country code, name|Provide 1 to 100|Each source must|Source type and check interval/i.test(message) ? 400 : 500;
     return sendError(res, status, message);

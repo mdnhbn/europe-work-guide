@@ -37,13 +37,15 @@ jobs:
       - name: Validate serverless API syntax
         run: |
           node --check api/admin.js
+          node --check server/admin-auth.js
           node --check api/account-delete.js
+          node --test tests/server/admin-auth.test.js tests/server/job-schema.test.js tests/server/account-delete.test.js tests/server/admin-audit.test.js
       - name: Build production frontend
         working-directory: app
         run: npm run build
 
   scraper:
-    name: Python scraper syntax validation (${{ matrix.os }})
+    name: Python scraper tests and syntax validation (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -57,5 +59,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install HTTP retry test dependency
+        run: python -m pip install requests
+      - name: Test transient HTTP retry policy
+        run: python -m unittest discover -s scrapers/tests -v
       - name: Compile scraper source
         run: python -m compileall -q scrapers

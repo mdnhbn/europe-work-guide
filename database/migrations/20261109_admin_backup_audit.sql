@@ -15,8 +15,9 @@ CREATE INDEX IF NOT EXISTS admin_audit_log_created_at_idx
   ON public.admin_audit_log (created_at DESC);
 
 ALTER TABLE public.admin_audit_log ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.admin_audit_log FROM anon, authenticated;
+REVOKE ALL ON TABLE public.admin_audit_log FROM PUBLIC, anon, authenticated, service_role;
 GRANT SELECT, INSERT ON TABLE public.admin_audit_log TO service_role;
+REVOKE ALL ON SEQUENCE public.admin_audit_log_id_seq FROM PUBLIC, anon, authenticated, service_role;
 GRANT USAGE, SELECT ON SEQUENCE public.admin_audit_log_id_seq TO service_role;
 
 CREATE OR REPLACE FUNCTION public.prevent_admin_audit_log_mutation()
@@ -32,3 +33,8 @@ DROP TRIGGER IF EXISTS admin_audit_log_no_update ON public.admin_audit_log;
 CREATE TRIGGER admin_audit_log_no_update
 BEFORE UPDATE OR DELETE ON public.admin_audit_log
 FOR EACH ROW EXECUTE FUNCTION public.prevent_admin_audit_log_mutation();
+
+DROP TRIGGER IF EXISTS admin_audit_log_no_truncate ON public.admin_audit_log;
+CREATE TRIGGER admin_audit_log_no_truncate
+BEFORE TRUNCATE ON public.admin_audit_log
+FOR EACH STATEMENT EXECUTE FUNCTION public.prevent_admin_audit_log_mutation();

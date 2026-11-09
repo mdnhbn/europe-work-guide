@@ -12,7 +12,7 @@ The production UI now includes:
 
 The latest production commit also passed the Vercel production build. Automated GitHub Actions status should be checked under the repository's Actions tab; the connector did not return a workflow-run record during this update.
 
-The privacy/terms content is a first-release draft and must be completed with the operator's legal identity and support contact before treating it as final. Profile JSON export and a self-service account deletion endpoint are implemented, but deletion must be tested against the live Supabase project and the server-only service key must be configured. Automated retention/deletion is still not implemented.
+The privacy/terms content is a first-release draft and must be completed with the operator's legal identity and support contact before treating it as final. Profile JSON export and a self-service account deletion endpoint are implemented; automated endpoint tests and a live verification runbook are included, but live verification still needs the server-only service key. Automated retention is not implemented because the operator must first define a lawful retention period.
 
 ## Latest implementation update
 
@@ -20,13 +20,19 @@ The production branch now includes country comparison, an editable cover-letter 
 
 These changes extend the existing Supabase/Vercel app rather than replacing its backend. Google/Facebook/phone authentication depends on provider credentials in Supabase. Admin endpoints depend on server-only Vercel environment variables. The scheduled official-source scraper depends on GitHub Actions secrets.
 
-**Still not fully implemented or not independently verified:** production-ready retention/deletion policy, current-residence-specific matching, every PRD admin module, a fully encrypted restore/preview workflow, all country-specific CV conventions, and full end-to-end authentication/admin testing against live Supabase. Self-service account deletion code is included, but it requires the server-only `SUPABASE_SERVICE_KEY` environment variable and must be verified against the live Supabase project. The latest Vercel build is not proof that external provider credentials or all live data operations are configured correctly. Encrypted full-backup export/preview/restore code is now included, with a 3 MB encrypted-payload safety limit; it requires `BACKUP_ENCRYPTION_KEY`, `SUPABASE_SERVICE_KEY`, GitHub Contents write access, and the audit migration below.
+**Still not fully implemented or not independently verified:** production-ready retention/deletion policy, current-residence-specific matching, every PRD admin module, a fully encrypted restore/preview workflow, all country-specific CV conventions, and full end-to-end authentication/admin testing against live Supabase. Self-service account deletion code and mock-based endpoint tests are included, with a runbook for live verification. Live verification requires the server-only `SUPABASE_SERVICE_KEY` environment variable. Automated retention remains unimplemented until the operator defines and approves a retention policy. The latest Vercel build is not proof that external provider credentials or all live data operations are configured correctly. Encrypted full-backup export/preview/restore code is now included, with a 3 MB encrypted-payload safety limit; it requires `BACKUP_ENCRYPTION_KEY`, `SUPABASE_SERVICE_KEY`, GitHub Contents write access, and the audit migration below.
 
 ## Admin source registry and job matching
 
-The admin panel can edit country source-registry JSON files in `scrapers/countries/`, inspect recent `source_pages` fetch metadata, request a manual scraper run through GitHub Actions, and control the global banner switch/frequency. The token used for source editing needs repository Contents read/write; manual run also needs Actions: write. Banner ads use localStorage frequency control. Pop-under and arbitrary third-party script injection intentionally remain disabled. Source URLs must use HTTPS. This registry currently covers only configured country files; a working connector must still be implemented for each source type.
+The admin panel can edit country source-registry JSON files in `scrapers/countries/`, inspect recent `source_pages` fetch metadata, request a manual scraper run through GitHub Actions, and control the global banner switch/frequency. The token used for source editing needs repository Contents read/write; manual run also needs Actions: write. Banner ads use localStorage frequency control. Pop-under and arbitrary third-party script injection intentionally remain disabled. Source URLs must use HTTPS. This registry currently covers only configured country files; a working connector must still be implemented for each source type. Scraper GET requests use bounded retries for transient connection failures and HTTP 429/5xx responses, respect `Retry-After`, and keep robots.txt checks fail-closed.
 
-Verified job cards now show an explainable heuristic profile-match score based on exact preferred-occupation matches, skill words appearing in the job text, target-country preference, and experience wording. This is not an AI hiring prediction or a visa eligibility assessment. Because the current database/job connector does not yet supply structured required skills, salary, language levels, deadlines, or employment types for every job, those fields are not fabricated.
+Verified job cards now show an explainable heuristic profile-match score based on exact preferred-occupation matches, skill words appearing in the job text, target-country preference, and experience wording. This is not an AI hiring prediction or a visa eligibility assessment. The structured job schema and admin form support optional source-backed job details after the migration. The official job connector is still incomplete, so no salary, language, qualification, or deadline values are fabricated.
+
+## Structured job fields
+
+The migration `database/migrations/20261109_structured_jobs.sql` adds optional salary range/currency/period, application deadline, ISCO-08 unit-group code, language and qualification arrays, explicit expiry time, last-seen time, and a duplicate fingerprint. The admin API checks whether this migration is present: while it is absent, blank structured fields are omitted and attempts to save non-empty structured values return a clear migration-required error. Public job cards hide a listing once its stated application deadline or expiry time has passed; they do not delete records automatically.
+
+Language requirements use JSON arrays such as `[{"language":"Italian","level":"B1"}]`; qualifications use arrays of strings. Only enter details supported by the job's official source. This migration does not add a job scraping connector.
 
 ## Current-residence-aware matching
 
@@ -146,7 +152,7 @@ git push
 
 ## 4. Configure the admin panel
 
-The signed-in account is shown the admin tab only when its Supabase Auth email appears in `ADMIN_EMAILS`. The API checks that allowlist on the server for every request. The admin API adds no tables or RLS policies. Admins can manage countries, country access, visa routes, jobs, and advertisements. Ads are committed to `app/public/ads.json`; when Vercel is connected to the GitHub repository, the new ad appears after that commit deploys.
+The signed-in account is shown the admin tab only when its Supabase Auth email appears in `ADMIN_EMAILS`. The API checks that allowlist on the server for every request. Every admin operation except the allowlist check also requires a server-validated access token with `aal2` and a TOTP `amr` method. The admin tab guides an allowlisted admin through authenticator enrollment or a TOTP challenge before loading admin data. Admins can manage countries, country access, visa routes, jobs, and advertisements. Ads are committed to `app/public/ads.json`; when Vercel is connected to the GitHub repository, the new ad appears after that commit deploys.
 
 In Vercel **Settings → Environment Variables**, add these server-only values for the environments where you will use the admin panel:
 
@@ -155,6 +161,7 @@ In Vercel **Settings → Environment Variables**, add these server-only values f
 - `SUPABASE_SERVICE_KEY` = your Supabase service-role/secret key
 - `ADMIN_EMAILS` = comma-separated Supabase Auth email addresses allowed to administer the app
 - `GITHUB_TOKEN` = a fine-grained GitHub token restricted to this repository with **Contents: Read and write** access
+- `BACKUP_ENCRYPTION_KEY` = a server-only 32-byte random key (64 hex characters or base64) for encrypted backup operations
 - `GITHUB_REPOSITORY` = `mdnhbn/europe-work-guide`
 - `GITHUB_BRANCH` = `main`
 
@@ -218,3 +225,7 @@ The existing Supabase project now contains a human-reviewed Italy/Bangladesh acc
 
 No individual job listings were fabricated. When the app has no verified active vacancy, it links to the official EURES portal so users can search current postings.
 
+
+## CV PDF download
+
+The CV tab can create a downloadable A4 PDF locally in the browser from the selected template and profile. The PDF renderer loads only when requested. The existing print option stays available. The bundled regular and bold Noto Sans Bengali fonts are static 400 and 700 weight instances of the [Noto Sans Bengali variable font](https://github.com/google/fonts/tree/5bb28733cec313b63fbd415b574b5ae35c8aa8b8/ofl/notosansbengali), at normal width under the [SIL Open Font License](app/public/fonts/OFL-NotoSansBengali.txt).
